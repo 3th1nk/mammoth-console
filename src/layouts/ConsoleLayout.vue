@@ -128,17 +128,16 @@ function copyPassword() {
     </el-aside>
 
     <el-container>
-      <el-header class="topbar" height="48px">
+      <el-header class="topbar" height="52px">
         <div class="topbar-right">
           <el-input
             class="search-entry"
-            size="small"
             readonly
             placeholder="搜索  ⌘K"
             @click="palette?.open()"
           />
           <el-tooltip :content="theme.dark ? '切到亮色' : '切到暗色'" placement="bottom">
-            <el-button size="small" circle text @click="theme.toggle()">
+            <el-button class="theme-toggle" circle text @click="theme.toggle()">
               <el-icon><Moon v-if="!theme.dark" /><Sunny v-else /></el-icon>
             </el-button>
           </el-tooltip>
@@ -221,11 +220,18 @@ function copyPassword() {
   gap: 10px;
 }
 .search-entry {
-  width: 180px;
+  width: 220px;
   cursor: pointer;
 }
 .search-entry :deep(.el-input__inner) {
   cursor: pointer;
+}
+.theme-toggle {
+  height: 32px;
+  width: 32px;
+}
+.theme-toggle :deep(.el-icon) {
+  font-size: 17px;
 }
 .operator {
   cursor: pointer;
@@ -233,8 +239,8 @@ function copyPassword() {
   align-items: center;
 }
 .avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 2px solid #e4e7ed;
   background: var(--el-fill-color-light);
