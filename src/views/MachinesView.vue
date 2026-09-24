@@ -301,7 +301,7 @@ function onActionSubmitted() {
         <el-table-column label="注册时间" width="160">
           <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <MachineActions
               :machine-id="row.id"
