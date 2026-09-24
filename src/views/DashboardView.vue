@@ -200,6 +200,15 @@ onUnmounted(() => {
           </router-link>
         </div>
       </div>
+      <el-alert
+        v-if="!conn.capabilities?.netboot_enabled"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="ob-pxe"
+        title="当前引擎未启用 PXE——零注册走不通，裸机插电不会自己出现在待认领里"
+        description="要让机器自己出现，需在引擎部署环境设置 MAMMOTH_PXE_ENABLED=true（零注册再加 MAMMOTH_PXE_ENROLL 与 MAMMOTH_PXE_ENROLL_TOKEN）并重启；否则请用注册对话框或 API 手动录入机器。"
+      />
     </el-card>
 
     <el-row :gutter="14" class="mb">
@@ -263,6 +272,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.ob-pxe {
+  margin-top: 12px;
 }
 .ob-steps {
   display: flex;
