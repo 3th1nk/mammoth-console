@@ -26,10 +26,10 @@ type Item = {
 
 const NAV_ITEMS: Item[] = [
   { key: 'nav-dashboard', icon: 'Odometer', title: '总览', to: { name: 'dashboard' } },
-  { key: 'nav-machines', icon: 'Platform', title: '机器列表', to: { name: 'machines' } },
-  { key: 'nav-pending', icon: 'Bell', title: '待认领机器', to: { name: 'pending' } },
-  { key: 'nav-jobs', icon: 'List', title: '任务列表', to: { name: 'jobs' } },
-  { key: 'nav-events', icon: 'Document', title: '事件审计', to: { name: 'events' } },
+  { key: 'nav-machines', icon: 'Platform', title: '机器', to: { name: 'machines' } },
+  { key: 'nav-pending', icon: 'Bell', title: '待认领', to: { name: 'pending' } },
+  { key: 'nav-jobs', icon: 'List', title: '任务', to: { name: 'jobs' } },
+  { key: 'nav-events', icon: 'Document', title: '事件', to: { name: 'events' } },
   { key: 'nav-images', icon: 'Box', title: '镜像库', to: { name: 'images' } },
   { key: 'nav-credentials', icon: 'Key', title: '凭证', to: { name: 'credentials' } },
   { key: 'nav-settings', icon: 'Setting', title: '设置', to: { name: 'settings' } },

@@ -90,6 +90,12 @@ function copyPassword() {
         <img src="/mammoth.svg" alt="mammoth" />
         <span>Mammoth Console</span>
       </div>
+      <div class="engine-version">
+        <el-tag v-if="conn.capabilities" type="success" effect="plain" size="small">
+          引擎 v{{ conn.capabilities.version }}
+        </el-tag>
+        <el-tag v-else type="danger" effect="plain" size="small">未连接</el-tag>
+      </div>
       <el-menu router :default-active="$route.path" class="menu">
         <el-menu-item index="/">
           <el-icon><Odometer /></el-icon>总览
@@ -136,10 +142,6 @@ function copyPassword() {
               <el-icon><Moon v-if="!theme.dark" /><Sunny v-else /></el-icon>
             </el-button>
           </el-tooltip>
-          <el-tag v-if="conn.capabilities" type="success" effect="plain" size="small">
-            引擎 v{{ conn.capabilities.version }}
-          </el-tag>
-          <el-tag v-else type="danger" effect="plain" size="small">未连接</el-tag>
           <el-dropdown trigger="click">
             <span class="operator">
               <img src="/avatar.svg" alt="operator" class="avatar" />
@@ -202,6 +204,9 @@ function copyPassword() {
 }
 .menu {
   border-right: none;
+}
+.engine-version {
+  padding: 0 16px 10px;
 }
 .topbar {
   display: flex;
