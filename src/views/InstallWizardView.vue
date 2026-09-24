@@ -828,7 +828,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div class="hint">全新系统默认不开任何入站管理面；按需开启是运营者的安全决策。</div>
         </el-form-item>
 
-        <el-form-item v-if="!isWindows" label="软件源（package_source，可选）">
+        <el-form-item v-if="!isWindows" label="软件源">
           <div style="width: 100%">
             <div v-for="(r, idx) in repos" :key="idx" class="repo-row">
               <el-input v-model="r.name" placeholder="name" style="width: 130px" class="mono" />
