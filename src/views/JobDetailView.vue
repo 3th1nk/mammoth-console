@@ -169,8 +169,8 @@ function openTask(t: components['schemas']['Task']) {
           <el-table-column label="状态" width="120">
             <template #default="{ row }"><StateBadge kind="task" :state="row.state" /></template>
           </el-table-column>
-          <el-table-column label="尝试" width="70">
-            <template #default="{ row }">#{{ row.attempt }}</template>
+          <el-table-column label="执行轮次" width="100">
+            <template #default="{ row }">第 {{ row.attempt }} 次</template>
           </el-table-column>
           <el-table-column label="当前阶段" min-width="140">
             <template #default="{ row }"><span class="mono">{{ currentStage(row) }}</span></template>

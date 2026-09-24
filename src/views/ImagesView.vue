@@ -34,7 +34,7 @@ function openRegister() {
 async function submitRegister() {
   const sha = reg.value.sha256.trim().toLowerCase()
   if (!reg.value.source_url.trim() || !/^[0-9a-f]{64}$/.test(sha)) {
-    ElMessage.warning('请填写镜像 URL 与 64 位十六进制 sha256')
+    ElMessage.warning('请填写镜像 URL 与 SHA256')
     return
   }
   registering.value = true
@@ -146,7 +146,7 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
         <template #empty>
           <el-empty :image-size="80" description="镜像库是空的">
             <div class="text-muted" style="font-size: 13px; max-width: 460px; line-height: 1.7">
-              注册一个 http(s) 镜像地址与其 sha256，引擎会在后台拉取并校验——
+              注册一个 http(s) 镜像地址与其 SHA256，引擎会在后台拉取并校验——
               装机时直接从库里选择，不必再手工粘贴校验和。
             </div>
           </el-empty>

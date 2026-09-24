@@ -219,7 +219,7 @@ async function submit() {
       <el-collapse>
         <el-collapse-item name="ssh">
           <template #title>带内 SSH（可选，用于分区级盘查）</template>
-          <el-form-item label="SSH 凭证（可选）">
+          <el-form-item label="SSH 凭证">
             <el-select
               v-model="sshCredId"
               clearable

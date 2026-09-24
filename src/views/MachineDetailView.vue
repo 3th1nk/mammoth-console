@@ -119,7 +119,7 @@ const title = computed(() => {
         class="mb"
       />
 
-      <el-card shadow="never" header="带外（BMC）与带内寻址" class="mb">
+      <el-card shadow="never" header="基础信息" class="mb">
         <el-descriptions :column="3" border size="small">
           <el-descriptions-item label="机器 ID"><span class="mono">{{ machine.id }}</span></el-descriptions-item>
           <el-descriptions-item label="BMC 地址"><span class="mono">{{ machine.bmc.address }}</span></el-descriptions-item>

@@ -206,7 +206,7 @@ function onActionSubmitted() {
         </el-select>
         <el-input
           v-model="qInput"
-          placeholder="搜索：序列号 / BMC 地址 / 厂商 / 型号 / 标签 / ID"
+          placeholder="序列号 / BMC 地址 / 厂商 / 型号 / 标签 / ID"
           clearable
           style="width: 320px"
           @keyup.enter="applySearch"
@@ -245,6 +245,9 @@ function onActionSubmitted() {
         <el-table-column type="selection" width="42" class-name="sel-col" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }"><StateBadge kind="machine" :state="row.state" /></template>
+        </el-table-column>
+        <el-table-column label="ID" width="150">
+          <template #default="{ row }"><span class="mono">{{ row.id }}</span></template>
         </el-table-column>
         <el-table-column label="BMC 地址" min-width="130">
           <template #default="{ row }"><span class="mono">{{ row.bmc.address }}</span></template>

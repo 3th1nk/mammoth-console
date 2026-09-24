@@ -629,7 +629,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               </el-option>
             </el-select>
             <div class="hint">
-              没有合适的？先到「镜像库」注册（引擎按 sha256 门禁后台拉取）。
+              没有合适的？先到「镜像库」注册（引擎按 SHA256 门禁后台拉取）。
               <router-link to="/images" target="_blank">打开镜像库</router-link>
             </div>
             <div v-if="readyImages.length === 0" class="hint" style="color: #e6a23c">

@@ -209,11 +209,11 @@ UI 要点：sighting 是"等认领"不是任务；report 可能为 null（机器
 
 | 端点 | 语义 |
 |---|---|
-| `POST /images` | 注册：`name? + source_url(http/s) + sha256(64hex 必填) + distro?/version?`（信息性） |
+| `POST /images` | 注册：`name? + source_url(http/s) + SHA256(64hex 必填) + distro?/version?`（信息性） |
 | `GET /images`、`GET /images/{id}`、`DELETE /images/{id}` | 游标分页 / 详情 / 删除 |
 
 - `Image.state: fetching → ready | failed`（failed 带 error：校验和不符 / 源不可达）；ready 后 `size_bytes` 可用。
-- sha256 是**门禁**不是元数据：下载边流边哈希，不符不落缓存；同 digest 多注册共享缓存文件。
+- SHA256 是**门禁**不是元数据：下载边流边哈希，不符不落缓存；同 digest 多注册共享缓存文件。
 - 装机意图新引用方式：`spec.image.id` 指向注册件，**与 `spec.image.source` 互斥**（校验与解析都在引擎侧完成）。
 
 ### 7.3 装后软件源渲染（spec.package_source）

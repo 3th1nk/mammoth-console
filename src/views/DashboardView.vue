@@ -86,7 +86,7 @@ const onboardingSteps = computed(() => [
   {
     done: hasImage.value,
     title: '注册装机镜像',
-    desc: 'http(s) 地址 + sha256，引擎后台拉取校验',
+    desc: 'http(s) 地址 + SHA256，引擎后台拉取校验',
     to: '/images',
   },
   {
