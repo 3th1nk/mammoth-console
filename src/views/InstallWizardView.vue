@@ -620,7 +620,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         <el-form-item label="镜像" required>
           <el-radio-group v-model="imageMode">
             <el-radio-button value="library">从镜像库选择（推荐）</el-radio-button>
-            <el-radio-button value="inline">内联 source + checksum</el-radio-button>
+            <el-radio-button value="inline">直接填写镜像地址</el-radio-button>
           </el-radio-group>
           <div v-if="imageMode === 'library'" style="width: 100%; margin-top: 6px">
             <el-select v-model="chosenImageId" placeholder="选择就绪的库镜像" style="width: 420px">
@@ -644,7 +644,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
             />
             <el-input
               v-model="spec.image.checksum"
-              placeholder="校验和 sha256:9f86d0…（可选，建议填写）"
+              placeholder="校验和: 9f86d8... (SHA256，可选，建议填写)"
               class="mono"
               style="margin-top: 6px"
             />
