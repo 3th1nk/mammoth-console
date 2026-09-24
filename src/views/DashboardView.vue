@@ -2,13 +2,16 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import * as echarts from 'echarts'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, CircleCheck } from '@element-plus/icons-vue'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { useConnectionStore } from '@/stores/connection'
 import StateBadge from '@/components/StateBadge.vue'
 import { formatTime } from '@/utils/format'
 
 const MACHINES_STATS_PAGE = 200
+
+const conn = useConnectionStore()
 
 const machinesQuery = useQuery({
   queryKey: ['dashboard', 'machines'],
@@ -41,6 +44,64 @@ const failedJobsQuery = useQuery({
       }),
     ),
 })
+
+// ── 开箱向导（首启五步；有成功装机后自动消失） ──────────────────────────────
+const dismissed = ref(localStorage.getItem('mammoth.console.onboarding') === 'done')
+function dismissOnboarding() {
+  dismissed.value = true
+  localStorage.setItem('mammoth.console.onboarding', 'done')
+}
+const credsQuery = useQuery({
+  queryKey: ['credentials'],
+  queryFn: async () => unwrap(await getClient().GET('/api/v1/credentials')),
+})
+const imagesAllQuery = useQuery({
+  queryKey: ['images'],
+  queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
+})
+const installJobQuery = useQuery({
+  queryKey: ['dashboard', 'install-jobs'],
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/jobs', { params: { query: { type: 'install', page_size: 1 } } })),
+})
+const hasInstall = computed(() => (installJobQuery.data.value?.items?.length ?? 0) > 0)
+const hasImage = computed(() =>
+  (imagesAllQuery.data.value?.items ?? []).some((i) => i.state === 'ready'),
+)
+const hasCred = computed(() => (credsQuery.data.value?.items ?? []).some((c) => c.type === 'bmc'))
+const showOnboarding = computed(() => !dismissed.value && !hasInstall.value)
+const onboardingSteps = computed(() => [
+  {
+    done: true,
+    title: '连接引擎',
+    desc: `已连接 v${conn.capabilities?.version ?? ''}`,
+    to: '',
+  },
+  {
+    done: hasCred.value,
+    title: '新建 BMC 凭证',
+    desc: '带外操作的登录凭据（用户名/密码）',
+    to: '/credentials',
+  },
+  {
+    done: hasImage.value,
+    title: '注册装机镜像',
+    desc: 'http(s) 地址 + sha256，引擎后台拉取校验',
+    to: '/images',
+  },
+  {
+    done: machines.value.length > 0,
+    title: '机器就绪',
+    desc: '注册机器，或开启零注册等机器自己出现',
+    to: '/machines',
+  },
+  {
+    done: hasInstall.value,
+    title: '跑第一次装机',
+    desc: '机器列表勾选 → 装机 → 四步向导',
+    to: '/machines',
+  },
+])
 
 const machines = computed(() => machinesQuery.data.value?.items ?? [])
 const stateCounts = computed<Record<string, number>>(() => {
@@ -119,6 +180,28 @@ onUnmounted(() => {
 
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon class="mb" />
 
+    <el-card v-if="showOnboarding" shadow="never" class="mb onboarding">
+      <template #header>
+        <div class="ob-head">
+          <span>开箱向导 · 五步到第一台装好的机器</span>
+          <el-button size="small" text @click="dismissOnboarding">跳过引导</el-button>
+        </div>
+      </template>
+      <div class="ob-steps">
+        <div v-for="(st, i) in onboardingSteps" :key="st.title" class="ob-step" :class="{ done: st.done }">
+          <el-icon v-if="st.done" class="ob-check"><CircleCheck /></el-icon>
+          <span v-else class="ob-num">{{ i }}</span>
+          <div class="ob-body">
+            <div class="ob-title">{{ st.title }}</div>
+            <div class="ob-desc">{{ st.desc }}</div>
+          </div>
+          <router-link v-if="!st.done && st.to" :to="st.to">
+            <el-button size="small" type="primary" plain>前往</el-button>
+          </router-link>
+        </div>
+      </div>
+    </el-card>
+
     <el-row :gutter="14" class="mb">
       <el-col :span="6">
         <el-card shadow="never">
@@ -175,6 +258,55 @@ onUnmounted(() => {
 <style scoped>
 .mb {
   margin-bottom: 14px;
+}
+.ob-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ob-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ob-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+.ob-step.done {
+  opacity: 0.65;
+}
+.ob-check {
+  color: #67c23a;
+  font-size: 20px;
+}
+.ob-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #409eff;
+  color: #fff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ob-body {
+  flex: 1;
+}
+.ob-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+.ob-desc {
+  font-size: 12px;
+  color: #909399;
 }
 .donut {
   height: 240px;
