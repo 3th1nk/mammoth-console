@@ -18,10 +18,30 @@
 4. 渲染即预览：装机意图提交前经 `install-plan` 试算，所见即所装。
 5. API-first 可视化：UI 全走公开 API，每个操作面板提供 Copy as cURL。
 
+## 部署交付（deploy/）
+
+```bash
+docker compose -f deploy/compose.yaml up -d --build   # 引擎同网络（服务名 mammoth）
+# 或引擎在宿主机：
+MAMMOTH_UPSTREAM=http://host.docker.internal:8080 docker compose -f deploy/compose.yaml up -d --build
+```
+
+打开 `http://<host>:8081`，连接页填引擎 token、地址留空。镜像为多阶段构建
+（node 构建 → Caddy 托管 + `/api` 反代，SSE `flush_interval -1` 实时透传）；
+契约升级后先 `npm run gen:api` 重新生成类型并提交再构建。
+
 ## 下一步
 
 - ~~评审 [03-product-design §11 开放决策](./docs/03-product-design.md)~~（已随开发推进关闭）。
-- **M2 核心闭环**：注册/认领、电源与介质动作、装机向导（含 install-plan 试算）、任务观测（SSE+日志）、root 密码捕获、Onboarding 向导。
+- ~~M2 核心闭环~~ ✅；~~M2b 装机向导+镜像库~~ ✅；~~M2c 健康面~~ ✅；~~M3 快赢项~~ ✅。
+- 剩余：Onboarding ✅（总览开箱向导）；M3 尾巴 i18n(en)；M4 全局搜索/暗色/E2E。
+- 引擎侧 P1（见 docs/04）：A5 批量标签、A6 只读配置快照、A7 镜像发行版自动识别。
+
+## 商标声明
+
+Linux 发行版名称与 logo（Rocky、CentOS、银河麒麟、UOS、Ubuntu、Debian、Alpine）与
+Windows 均为其各自所有者的商标，仅作"指示支持该发行版"的展示使用；
+mammoth-console 与这些项目不存在隶属或背书关系。Windows 是 Microsoft 的商标。
 
 ## 本地开发
 

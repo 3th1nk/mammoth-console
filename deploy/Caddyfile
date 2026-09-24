@@ -1,0 +1,17 @@
+:80 {
+	encode gzip
+
+	# 引擎 API 与 SSE 反代：flush 关闭保证事件流实时
+	handle /api/* {
+		reverse_proxy {$MAMMOTH_UPSTREAM} {
+			flush_interval -1
+		}
+	}
+
+	# 控制台静态资源 + SPA 路由回退
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
