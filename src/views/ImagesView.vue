@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { Refresh, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
-import { detectDistroFromUrl } from '@/utils/distro'
 import { formatBytes, formatTime } from '@/utils/format'
 
 type Image = components['schemas']['Image']
@@ -32,18 +31,6 @@ function openRegister() {
   regVisible.value = true
 }
 
-// 粘贴 URL 后从文件名识别，仅预填空字段（不覆盖用户已填内容）
-watch(
-  () => reg.value.source_url,
-  (url) => {
-    const hit = detectDistroFromUrl(url)
-    if (!hit) return
-    if (!reg.value.name) reg.value.name = hit.name
-    if (!reg.value.distro && hit.distro) reg.value.distro = hit.distro
-    if (!reg.value.version && hit.version) reg.value.version = hit.version
-  },
-)
-
 async function submitRegister() {
   const sha = reg.value.sha256.trim().toLowerCase()
   if (!reg.value.source_url.trim() || !/^[0-9a-f]{64}$/.test(sha)) {
@@ -63,7 +50,7 @@ async function submitRegister() {
         },
       }),
     )
-    ElMessage.success('已注册，引擎正在拉取镜像')
+    ElMessage.success('已注册，引擎正在拉取镜像（distro/version 留空时引擎会自动识别）')
     regVisible.value = false
     void query.refetch()
   } catch (e) {
@@ -183,12 +170,12 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
         </el-form-item>
         <el-row :gutter="10">
           <el-col :span="12">
-            <el-form-item label="发行版（可选，信息性）">
+            <el-form-item label="发行版（可选，留空由引擎自动识别）">
               <el-input v-model="reg.distro" placeholder="rocky" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="版本（可选，信息性）">
+            <el-form-item label="版本（可选，留空由引擎自动识别）">
               <el-input v-model="reg.version" placeholder="9.4" />
             </el-form-item>
           </el-col>

@@ -47,36 +47,3 @@ export const FAMILY_LABELS: Record<DistroFamilyKey, string> = {
 export function familyLabel(key: DistroFamilyKey): string {
   return FAMILY_LABELS[key] ?? key
 }
-
-// ── 镜像文件名启发式识别：Rocky-9.4-x86_64-dvd.iso → rocky/9.4 ──────────────
-const FILENAME_PATTERNS: Array<[RegExp, string]> = [
-  [/rocky[ _-]?(\d+(\.\d+)?)?/i, 'rocky'],
-  [/centos[ _-]?(\d+(\.\d+)?)?/i, 'centos'],
-  [/neo ?kylin|kylin[ _-]?v?(\d+(\.\d+)?)?/i, 'kylin'],
-  [/uniontech|uos[ _-]?(\d+(\.\d+)?)?/i, 'uos'],
-  [/ubuntu[ _-](\d+(?:\.\d+)?)/i, 'ubuntu'],
-  [/debian[ _-]?(\d+(\.\d+)?)?/i, 'debian'],
-  [/(?:windows|win)[ _-]?(?:server[ _-]?)?(\d{4})/i, 'windows'],
-  [/alpine[ _-]?(\d+(\.\d+)?)?/i, 'alpine'],
-]
-
-export function detectDistroFromUrl(
-  url: string,
-): { name: string; distro: string; version: string } | null {
-  let file = ''
-  try {
-    const u = new URL(url)
-    file = decodeURIComponent(u.pathname.split('/').pop() ?? '')
-  } catch {
-    file = url.split('/').pop() ?? ''
-  }
-  if (!file || !/\.iso$/i.test(file)) return null
-  const stem = file.replace(/\.iso$/i, '')
-  for (const [re, distro] of FILENAME_PATTERNS) {
-    const m = file.match(re)
-    if (m) {
-      return { name: stem, distro, version: (m[1] ?? '').replace(/[ _-]/g, '') }
-    }
-  }
-  return { name: stem, distro: '', version: '' }
-}

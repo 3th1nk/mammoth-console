@@ -10,7 +10,7 @@ import type { components } from '@/api/types.gen'
 import { useConnectionStore } from '@/stores/connection'
 import DistroBadge from '@/components/DistroBadge.vue'
 import StateBadge from '@/components/StateBadge.vue'
-import { resolveDistroKey, detectDistroFromUrl } from '@/utils/distro'
+import { resolveDistroKey } from '@/utils/distro'
 import { formatBytes } from '@/utils/format'
 
 type InstallSpec = components['schemas']['InstallSpec']
@@ -104,26 +104,6 @@ const readyImages = computed(() => (imagesQuery.data.value?.items ?? []).filter(
 const chosenImageId = ref('')
 // 依据镜像登记的 distro/version 自动选择发行版驱动（可手动改）
 const autoDistroHint = ref('')
-
-watch(
-  () => spec.image.source,
-  (url) => {
-    if (imageMode.value !== 'inline' || !url) return
-    const hit = detectDistroFromUrl(url)
-    if (!hit?.distro) return
-    const family = resolveDistroKey(hit.distro, undefined)
-    const candidates = distros.value.filter((d) => resolveDistroKey(d.name, d.family) === family)
-    if (candidates.length === 0) return
-    let picked = candidates[0]!
-    if (candidates.length > 1 && hit.version) {
-      const major = hit.version.match(/\d+/)?.[0]
-      const byMajor = major ? candidates.find((d) => d.name.replace(/[^\d]/g, '') === major) : undefined
-      if (byMajor) picked = byMajor
-    }
-    spec.image.distro = picked.name
-    autoDistroHint.value = `已按镜像文件名自动选择 ${picked.name}（可手动修改）`
-  },
-)
 
 watch(chosenImageId, (id) => {
   const img = readyImages.value.find((i) => i.id === id)
