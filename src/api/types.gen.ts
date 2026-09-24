@@ -3411,8 +3411,8 @@ export interface operations {
     listEvents: {
         parameters: {
             query?: {
-                /** @description `pending` covers zero-registration sightings; `webhook` webhook lifecycle. */
-                resource_type?: "job" | "task" | "machine" | "credential" | "pending" | "webhook";
+                /** @description `pending` covers zero-registration sightings; `webhook` webhook lifecycle; `image` artifact-library fetch outcomes. */
+                resource_type?: "job" | "task" | "machine" | "credential" | "pending" | "webhook" | "image";
                 resource_id?: string;
                 /** @description Exact event type filter (e.g. machine.discovered). */
                 type?: string;

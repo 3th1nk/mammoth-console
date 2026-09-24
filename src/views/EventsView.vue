@@ -7,6 +7,11 @@ import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
+import {
+  EVENT_TYPE_GROUPS,
+  eventTypeLabel,
+  resourceTypeLabel,
+} from '@/utils/events'
 
 type Webhook = components['schemas']['Webhook']
 
@@ -73,12 +78,12 @@ const hookRows = computed(() => hooksQuery.data.value?.items ?? [])
 
 const createVisible = ref(false)
 const creating = ref(false)
-const form = reactive({ url: '', types: '', resource_id: '' })
+const form = reactive({ url: '', types: [] as string[], resource_id: '' })
 // secret 仅创建响应出现一次
 const createdSecret = ref<{ url: string; secret: string } | null>(null)
 
 function openCreate() {
-  Object.assign(form, { url: '', types: '', resource_id: '' })
+  Object.assign(form, { url: '', types: [] as string[], resource_id: '' })
   createVisible.value = true
 }
 
@@ -89,10 +94,7 @@ async function submitCreate() {
   }
   creating.value = true
   try {
-    const types = form.types
-      .split(/[ ,]+/)
-      .map((t) => t.trim())
-      .filter(Boolean)
+    const types = form.types.map((t) => t.trim()).filter(Boolean)
     const { data } = await getClient().POST('/api/v1/webhooks', {
       body: {
         url: form.url.trim(),
@@ -157,7 +159,7 @@ function copySecret() {
         <el-tab-pane label="事件查询" name="events">
           <div class="filters">
             <el-select v-model="rtFilter" placeholder="全部资源类型" clearable style="width: 150px" @change="resetPaging">
-              <el-option v-for="rt in RESOURCE_TYPES" :key="rt" :label="rt" :value="rt" />
+              <el-option v-for="rt in RESOURCE_TYPES" :key="rt" :label="resourceTypeLabel(rt)" :value="rt" />
             </el-select>
             <el-input
               v-model="ridFilter"
@@ -168,14 +170,20 @@ function copySecret() {
               @keyup.enter="resetPaging"
               @clear="resetPaging"
             />
-            <el-input
+            <el-select
               v-model="typeFilter"
-              placeholder="事件类型，如 task.stage_changed"
+              placeholder="全部事件类型"
               clearable
-              style="width: 260px"
-              @keyup.enter="resetPaging"
-              @clear="resetPaging"
-            />
+              filterable
+              allow-create
+              default-first-option
+              style="width: 240px"
+              @change="resetPaging"
+            >
+              <el-option-group v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :label="g.label">
+                <el-option v-for="t in g.types" :key="t.value" :label="t.label" :value="t.value" />
+              </el-option-group>
+            </el-select>
             <el-button type="primary" @click="resetPaging">查询</el-button>
           </div>
 
@@ -188,12 +196,17 @@ function copySecret() {
             <el-table-column label="#" width="90">
               <template #default="{ row }"><span class="mono">{{ row.id }}</span></template>
             </el-table-column>
-            <el-table-column prop="resource_type" label="资源类型" width="120" />
+            <el-table-column label="资源类型" width="110">
+              <template #default="{ row }">{{ resourceTypeLabel(row.resource_type) }}</template>
+            </el-table-column>
             <el-table-column label="资源 ID" min-width="170">
               <template #default="{ row }"><span class="mono">{{ row.resource_id }}</span></template>
             </el-table-column>
-            <el-table-column label="事件" min-width="200">
-              <template #default="{ row }"><span class="mono">{{ row.type }}</span></template>
+            <el-table-column label="事件" min-width="210">
+              <template #default="{ row }">
+                <div>{{ eventTypeLabel(row.type) }}</div>
+                <div class="mono type-raw">{{ row.type }}</div>
+              </template>
             </el-table-column>
             <el-table-column label="时间" width="180">
               <template #default="{ row }">{{ formatTime(row.ts) }}</template>
@@ -231,7 +244,14 @@ function copySecret() {
             <el-table-column label="事件类型" min-width="200">
               <template #default="{ row }">
                 <template v-if="row.types && row.types.length > 0">
-                  <el-tag v-for="t in row.types" :key="t" size="small" effect="plain" class="type-tag">{{ t }}</el-tag>
+                  <el-tag
+                    v-for="t in row.types"
+                    :key="t"
+                    size="small"
+                    effect="plain"
+                    class="type-tag"
+                    :title="t"
+                  >{{ eventTypeLabel(t) }}</el-tag>
                 </template>
                 <span v-else class="text-muted">全部事件</span>
               </template>
@@ -273,8 +293,26 @@ function copySecret() {
         <el-form-item label="回调地址" required>
           <el-input v-model="form.url" placeholder="https://ops.example.com/mammoth-hook" class="mono" />
         </el-form-item>
-        <el-form-item label="事件类型（可选，逗号分隔；留空投递全部）">
-          <el-input v-model="form.types" placeholder="job.state_changed, task.stage_changed" class="mono" />
+        <el-form-item label="事件类型（可选；留空投递全部）">
+          <el-select
+            v-model="form.types"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入事件类型"
+            style="width: 100%"
+          >
+            <el-option-group v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :label="g.label">
+              <el-option v-for="t in g.types" :key="t.value" :label="t.label" :value="t.value">
+                <span>{{ t.label }}</span>
+                <span class="mono opt-raw">{{ t.value }}</span>
+              </el-option>
+            </el-option-group>
+          </el-select>
+          <div class="text-muted" style="font-size: 12px; margin-top: 4px">
+            按资源类型分组；支持搜索，也可手动输入清单之外的新类型（投递按精确匹配）。
+          </div>
         </el-form-item>
         <el-form-item label="资源过滤（可选，仅投递该资源的事件）">
           <el-input v-model="form.resource_id" placeholder="job_x9k2 / mch_xxxx" class="mono" />
@@ -333,6 +371,17 @@ function copySecret() {
 }
 .type-tag {
   margin-right: 4px;
+}
+.type-raw {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin-top: 2px;
+}
+.opt-raw {
+  float: right;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin-left: 12px;
 }
 .secret {
   margin: 12px 0 8px;
