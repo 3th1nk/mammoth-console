@@ -100,6 +100,70 @@ function startInstall() {
   router.push({ name: 'install-wizard', query: { machines: ids } })
 }
 
+// 批量打标签：引擎暂无批量端点（A5 待落地），前端并发 PATCH 循环
+const batchLabelVisible = ref(false)
+const batchChips = ref<string[]>([])
+const batchInput = ref('')
+const batchApplying = ref(false)
+const batchDone = ref(0)
+
+function openBatchLabels() {
+  batchChips.value = []
+  batchInput.value = ''
+  batchDone.value = 0
+  batchLabelVisible.value = true
+}
+
+function addBatchChip() {
+  const v = batchInput.value.trim()
+  if (!v) return
+  if (!/^[^=]+=[^=]*$/.test(v)) {
+    ElMessage.warning('标签格式为 k=v')
+    return
+  }
+  if (!batchChips.value.includes(v)) batchChips.value = [...batchChips.value, v]
+  batchInput.value = ''
+}
+
+async function applyBatchLabels() {
+  if (batchChips.value.length === 0) {
+    ElMessage.warning('请先添加标签')
+    return
+  }
+  batchApplying.value = true
+  const newLabels = Object.fromEntries(
+    batchChips.value.map((c) => {
+      const i = c.indexOf('=')
+      return [c.slice(0, i), c.slice(i + 1)] as [string, string]
+    }),
+  )
+  let ok = 0
+  await Promise.all(
+    selected.value.map(async (m) => {
+      try {
+        await unwrap(
+          await getClient().PATCH('/api/v1/machines/{id}', {
+            params: { path: { id: m.id } },
+            body: { labels: { ...m.labels, ...newLabels } },
+          }),
+        )
+        ok += 1
+      } catch {
+        // 单台失败不中断，最后汇总
+      }
+      batchDone.value += 1
+    }),
+  )
+  batchApplying.value = false
+  if (ok === selected.value.length) {
+    ElMessage.success(`已为 ${ok} 台机器更新标签`)
+    batchLabelVisible.value = false
+  } else {
+    ElMessage.warning(`${ok}/${selected.value.length} 台成功，详情见机器列表`)
+  }
+  void query.refetch()
+}
+
 function onRegistered(m: Machine) {
   void query.refetch()
   router.push({ name: 'machine-detail', params: { id: m.id } })
@@ -117,6 +181,9 @@ function onActionSubmitted() {
       <div>
         <el-button type="primary" :disabled="selected.length === 0" @click="startInstall">
           装机{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
+        </el-button>
+        <el-button :disabled="selected.length === 0" @click="openBatchLabels">
+          打标签{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
         </el-button>
         <el-button @click="registerVisible = true">注册机器</el-button>
         <el-button :icon="Refresh" @click="query.refetch()">刷新</el-button>
@@ -265,6 +332,31 @@ function onActionSubmitted() {
     </el-card>
 
     <RegisterMachineDialog v-model="registerVisible" @registered="onRegistered" />
+
+    <el-dialog v-model="batchLabelVisible" :title="`批量打标签（${selected.length} 台）`" width="480px">
+      <el-form label-position="top" @submit.prevent="applyBatchLabels">
+        <el-form-item label="标签（k=v，回车添加；已存在的同 key 会被覆盖）">
+          <el-input v-model="batchInput" placeholder="env=prod" @keyup.enter="addBatchChip" />
+          <el-tag
+            v-for="chip in batchChips"
+            :key="chip"
+            closable
+            size="small"
+            style="margin: 6px 6px 0 0"
+            @close="batchChips = batchChips.filter((c) => c !== chip)"
+          >
+            {{ chip }}
+          </el-tag>
+        </el-form-item>
+        <div v-if="batchApplying" class="text-muted" style="font-size: 13px">
+          应用中… {{ batchDone }}/{{ selected.length }}
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchLabelVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchApplying" @click="applyBatchLabels">应用到选中机器</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

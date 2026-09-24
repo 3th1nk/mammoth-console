@@ -22,6 +22,7 @@ export const router = createRouter({
         { path: 'credentials', name: 'credentials', component: () => import('@/views/CredentialsView.vue') },
         { path: 'install', name: 'install-wizard', component: () => import('@/views/InstallWizardView.vue') },
         { path: 'jobs', name: 'jobs', component: () => import('@/views/JobsView.vue') },
+        { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },
         { path: 'jobs/:id', name: 'job-detail', component: () => import('@/views/JobDetailView.vue'), props: true },
         {
           path: 'jobs/:jobId/tasks/:taskId',

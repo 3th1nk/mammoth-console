@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
@@ -52,6 +53,22 @@ const selQuery = useQuery({
     unwrap(await getClient().GET('/api/v1/machines/{id}/sel', { params: { path: { id: props.id } } })),
 })
 
+// KVM：一次性 URL 端点；真机多数控制器不支持（502 BMC_UNSUPPORTED），按能力降级提示
+const kvmLoading = ref(false)
+async function openKvm() {
+  kvmLoading.value = true
+  try {
+    const res = await unwrap(
+      await getClient().GET('/api/v1/machines/{id}/console', { params: { path: { id: props.id } } }),
+    )
+    window.open(res.url, '_blank', 'noopener')
+  } catch (e) {
+    ElMessage.warning(`${errorMessage(e)}（KVM 依赖控制器能力，多数机型暂不支持）`)
+  } finally {
+    kvmLoading.value = false
+  }
+}
+
 const HEALTH_META: Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }> = {
   ok: { label: '正常', type: 'success' },
   warning: { label: '警告', type: 'warning' },
@@ -76,6 +93,7 @@ const title = computed(() => {
         <PowerBadge v-if="machine" :state="machine.power_state" />
       </div>
       <div class="header-right">
+        <el-button :loading="kvmLoading" @click="openKvm">控制台</el-button>
         <MachineActions v-if="machine" :machine-id="machine.id" @submitted="query.refetch()" />
         <el-button :icon="Refresh" @click="query.refetch()">刷新</el-button>
       </div>

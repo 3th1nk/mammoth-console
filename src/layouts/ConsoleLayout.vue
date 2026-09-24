@@ -102,6 +102,9 @@ function copyPassword() {
         <el-menu-item index="/jobs">
           <el-icon><List /></el-icon>任务
         </el-menu-item>
+        <el-menu-item index="/events">
+          <el-icon><Document /></el-icon>事件
+        </el-menu-item>
         <el-menu-item index="/images">
           <el-icon><Box /></el-icon>镜像库
         </el-menu-item>
