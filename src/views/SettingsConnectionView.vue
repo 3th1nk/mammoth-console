@@ -110,7 +110,7 @@ function disconnect() {
     <el-card shadow="never" header="引擎能力（GET /api/v1，只读事实源）">
       <el-descriptions :column="3" border size="small" class="mb-inner">
         <el-descriptions-item label="契约版本">{{ conn.capabilities?.version ?? '—' }}</el-descriptions-item>
-        <el-descriptions-item label="缺省启动载体">{{ BOOT_LABEL[conn.capabilities?.boot_strategy_default ?? ''] ?? conn.capabilities?.boot_strategy_default ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="缺省引导方式">{{ BOOT_LABEL[conn.capabilities?.boot_strategy_default ?? ''] ?? conn.capabilities?.boot_strategy_default ?? '—' }}</el-descriptions-item>
         <el-descriptions-item label="资源注册">{{ conn.capabilities?.resources?.join('、') || '—' }}</el-descriptions-item>
         <el-descriptions-item label="PXE / 零注册">
           {{ conn.capabilities?.netboot_enabled ? '已启用' : '未启用' }}

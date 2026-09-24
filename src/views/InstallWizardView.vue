@@ -783,7 +783,11 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         </el-form-item>
 
         <el-form-item label="主机名模式（可选）">
-          <el-input v-model="hostnamePattern" placeholder="node-{index}；多台装机时按序展开" style="width: 320px" />
+          <el-input v-model="hostnamePattern" placeholder="如 node-{index} → node-1、node-2…" style="width: 320px" />
+          <div class="hint">
+            仅支持 {index} 变量：按上方勾选顺序替换为 1、2、3…（1 起）。不含 {index} 时所有机器同名（不推荐）。
+            逐台固定名暂不支持——引擎的提交接口可按机器单独覆盖，向导会在后续版本提供 CSV 导入。
+          </div>
         </el-form-item>
 
         <el-form-item :label="isWindows ? '管理员密码（Administrator）' : 'root 密码'">
@@ -864,7 +868,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
         </el-form-item>
 
-        <el-form-item label="启动策略">
+        <el-form-item label="引导方式">
           <el-radio-group
             v-model="spec.boot!.strategy"
             :disabled="isWindows && policyDraftInstaller === 'agent'"
