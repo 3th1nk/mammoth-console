@@ -651,7 +651,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
         </el-form-item>
 
-        <el-form-item label="发行版（按镜像自动识别，可手动调整）" required>
+        <el-form-item label="发行版" required>
           <el-select v-model="distroChoice" placeholder="选择发行版" style="width: 320px">
             <el-option v-for="d in distros" :key="d.name" :value="d.name" :label="d.name">
               <span style="display: inline-flex; align-items: center; gap: 8px">
@@ -782,7 +782,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div v-else class="hint">不配置则由装机环境 DHCP 分配网络。</div>
         </el-form-item>
 
-        <el-form-item label="主机名模式（可选）">
+        <el-form-item label="主机名">
           <el-input v-model="hostnamePattern" placeholder="如 node-{index} → node-1、node-2…" style="width: 320px" />
           <div class="hint">
             仅支持 {index} 变量：按上方勾选顺序替换为 1、2、3…（1 起）。不含 {index} 时所有机器同名（不推荐）。
@@ -808,7 +808,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div class="hint">随机模式下，密码将在装机完成时经一次性事件弹出，仅此一次，请留意保存。</div>
         </el-form-item>
 
-        <el-form-item v-if="!isWindows" label="SSH 公钥（可选；写入装好系统的 root authorized_keys，用于人工登录）">
+        <el-form-item v-if="!isWindows" label="SSH 公钥">
           <div style="width: 100%">
             <div v-for="(_k, i) in sshKeys" :key="i" class="repo-row">
               <el-input v-model="sshKeys[i]" placeholder="ssh-ed25519 AAAA… user@host" class="mono" style="flex: 1" />
@@ -861,7 +861,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 type="textarea"
                 :rows="4"
                 class="mono"
-                placeholder="#!/bin/sh …（明文，提交时自动按引擎要求转 base64）"
+                :placeholder="isWindows ? 'rem 或 PowerShell 语句（明文，提交时自动转 base64）' : '#!/bin/sh …（明文，提交时自动转 base64）'"
               />
             </el-card>
             <el-button size="small" @click="addScript">+ 添加脚本</el-button>
