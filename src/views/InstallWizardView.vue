@@ -842,7 +842,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
         </el-form-item>
 
-        <el-form-item :label="isWindows ? '脚本（Windows：post_install 走引擎托管首启链；pre_install 仅 setup 通路的 WinPE）' : '脚本（pre_install / post_install）'">
+        <el-form-item :label="isWindows ? '脚本（Windows：装后走引擎托管首启链；装前仅 setup 通路的 WinPE）' : '脚本'">
           <div style="width: 100%">
             <el-card v-for="(sc, i) in scripts" :key="i" shadow="never" class="script-block">
               <div class="script-head">
