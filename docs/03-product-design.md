@@ -218,7 +218,7 @@ flowchart LR
 | **M1 骨架可看** | 脚手架 + SDK 生成 + 连接设置 + 总览 + 机器列表/详情（只读）+ 状态徽章/动作菜单框架 | 连真实引擎可浏览全部机器与硬件信息 |
 | **M2a 核心闭环（观测+动作）** | 注册/认领/电源介质动作/任务观测（SSE+日志+retry+cancel）——✅ 已落地 | 已达成 |
 | **M2b 装机向导 + 镜像库** | 装机向导（族→版本选择、spec 表单+YAML 双视图、镜像库选择/内联 source 二选一、package_source 软件源编辑、health_gate 三档、install-plan 试算预览）/ root_password 捕获 / Onboarding / 镜像库页面（注册/状态/删除） | 纯 UI 走通"注册→装机→观测→重装"全流程 |
-| **M2c 健康面** | 机器详情"硬件健康"卡片（overall 徽章+传感器表）+ "SEL 硬件日志"卡片 + 磁盘表 health 徽章（仅 Redfish 机器，IPMI 422 降级） | 硬件健康可视化闭环 |
+| **M2c 健康面** | 机器详情"硬件健康"卡片（overall 徽章+传感器表）+ "SEL 硬件日志"卡片 + 磁盘表 health 徽章（仅 Redfish 机器，IPMI 422 降级）——✅ 已落地 | 已达成 |
 | **M3 完善** | 安装方案库、批量、事件审计、webhooks、BIOS/擦盘两段式、KVM 降级、i18n(en) | 覆盖 openapi 全部面向管理员的端点 |
 | **M4 打磨** | 全局搜索(Ctrl+K)、命令面板、暗色、E2E、compose 伴生包发布 | 一键 compose 交付验收 |
 

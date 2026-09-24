@@ -25,6 +25,40 @@ const query = useQuery({
 const machine = computed(() => query.data.value as Machine | undefined)
 const hardware = computed(() => machine.value?.hardware)
 
+// 分区快照：磁盘健康徽章数据源（ramdisk 探针 smartctl/nvme 读数）
+const layoutQuery = useQuery({
+  queryKey: computed(() => ['machine-layout', props.id]),
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/machines/{id}/layout', { params: { path: { id: props.id } } })),
+})
+const diskHealthBySerial = computed(() => {
+  const map = new Map<string, string>()
+  for (const d of layoutQuery.data.value?.disks ?? []) {
+    const serial = d.match?.serial
+    if (serial && d.health) map.set(serial, d.health)
+  }
+  return map
+})
+
+// BMC 实时健康与 SEL（同步活读；IPMI/不支持 → 422 降级提示）
+const healthQuery = useQuery({
+  queryKey: computed(() => ['machine-health', props.id]),
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/machines/{id}/health', { params: { path: { id: props.id } } })),
+})
+const selQuery = useQuery({
+  queryKey: computed(() => ['machine-sel', props.id]),
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/machines/{id}/sel', { params: { path: { id: props.id } } })),
+})
+
+const HEALTH_META: Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }> = {
+  ok: { label: '正常', type: 'success' },
+  warning: { label: '警告', type: 'warning' },
+  critical: { label: '严重', type: 'danger' },
+  unknown: { label: '未知', type: 'info' },
+}
+
 const title = computed(() => {
   const m = machine.value
   if (!m) return props.id
@@ -117,6 +151,19 @@ const title = computed(() => {
           <el-table-column label="容量" width="120">
             <template #default="{ row }">{{ formatBytes(row.size_bytes) }}</template>
           </el-table-column>
+          <el-table-column label="健康" width="90">
+            <template #default="{ row }">
+              <el-tag
+                v-if="row.serial && diskHealthBySerial.get(row.serial)"
+                :type="diskHealthBySerial.get(row.serial) === 'pass' ? 'success' : 'danger'"
+                size="small"
+                effect="light"
+              >
+                {{ diskHealthBySerial.get(row.serial) }}
+              </el-tag>
+              <span v-else class="text-muted" title="无盘查健康数据（不代表不健康）">—</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="medium" label="介质" width="90" />
           <el-table-column prop="protocol" label="协议" width="110" />
           <el-table-column label="可拔除" width="90">
@@ -145,6 +192,84 @@ const title = computed(() => {
           </el-table-column>
           <template #empty>尚无网卡信息（盘查完成后回填）</template>
         </el-table>
+      </el-card>
+
+      <el-card shadow="never" class="mb">
+        <template #header>
+          <div class="card-head">
+            <span>硬件健康（BMC 实时读）</span>
+            <el-button size="small" :icon="Refresh" :loading="healthQuery.isFetching.value" @click="healthQuery.refetch()">
+              重新读取
+            </el-button>
+          </div>
+        </template>
+        <el-alert
+          v-if="healthQuery.error.value"
+          :title="errorMessage(healthQuery.error.value)"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+        <template v-else-if="healthQuery.data.value">
+          <div class="health-overall">
+            <span class="text-muted" style="font-size: 13px">整体结论（worst-of）</span>
+            <el-tag :type="HEALTH_META[healthQuery.data.value.health]?.type ?? 'info'" effect="dark">
+              {{ HEALTH_META[healthQuery.data.value.health]?.label ?? healthQuery.data.value.health }}
+            </el-tag>
+          </div>
+          <el-table :data="healthQuery.data.value.sensors ?? []" size="small">
+            <el-table-column prop="name" label="传感器" min-width="200" />
+            <el-table-column label="读数" width="140">
+              <template #default="{ row }">
+                {{ row.reading !== undefined && row.reading !== null ? `${row.reading} ${row.unit ?? ''}` : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="HEALTH_META[row.state]?.type ?? 'info'" size="small" effect="light">
+                  {{ HEALTH_META[row.state]?.label ?? row.state }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <template #empty>控制器未上报传感器</template>
+          </el-table>
+        </template>
+        <div v-else class="text-muted">正在读取…</div>
+      </el-card>
+
+      <el-card shadow="never" class="mb">
+        <template #header>
+          <div class="card-head">
+            <span>SEL 硬件日志（最近 500 条）</span>
+            <el-button size="small" :icon="Refresh" :loading="selQuery.isFetching.value" @click="selQuery.refetch()">
+              重新读取
+            </el-button>
+          </div>
+        </template>
+        <el-alert
+          v-if="selQuery.error.value"
+          :title="errorMessage(selQuery.error.value)"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+        <el-table v-else-if="selQuery.data.value" :data="selQuery.data.value.entries ?? []" size="small">
+          <el-table-column label="级别" width="100">
+            <template #default="{ row }">
+              <el-tag :type="HEALTH_META[row.severity]?.type ?? 'info'" size="small" effect="light">
+                {{ HEALTH_META[row.severity]?.label ?? row.severity }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="时间" width="190">
+            <template #default="{ row }">{{ row.timestamp || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="事件" min-width="320">
+            <template #default="{ row }"><span class="mono" style="font-size: 12px">{{ row.message }}</span></template>
+          </el-table-column>
+          <template #empty>SEL 无记录</template>
+        </el-table>
+        <div v-else class="text-muted">正在读取…</div>
       </el-card>
 
       <el-card shadow="never" header="控制器固件清单（仅 Redfish 盘查产出）">
@@ -182,5 +307,16 @@ const title = computed(() => {
 }
 .label-tag {
   margin-right: 4px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.health-overall {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 </style>
