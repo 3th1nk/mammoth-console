@@ -101,7 +101,7 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
       :closable="false"
       show-icon
       class="mb"
-      title="sha256 是门禁不是元数据：拉取时边流边校验，不符即弃、不落缓存；相同摘要的镜像共享同一份缓存文件。"
+      title="SHA256 是门禁不是元数据：拉取时边流边校验，不符即弃、不落缓存；相同摘要的镜像共享同一份缓存文件。"
     />
 
     <el-card shadow="never">
