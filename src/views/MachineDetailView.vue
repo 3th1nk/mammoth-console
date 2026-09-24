@@ -127,7 +127,7 @@ const title = computed(() => {
           <el-descriptions-item label="厂商">{{ machine.bmc.vendor || '—' }}</el-descriptions-item>
           <el-descriptions-item label="型号">{{ machine.bmc.model || '—' }}</el-descriptions-item>
           <el-descriptions-item label="控制器固件">{{ machine.bmc.firmware_version || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="BMC 凭证"><span class="mono">{{ machine.bmc.credential_id }}</span>（secret 不回显）</el-descriptions-item>
+          <el-descriptions-item label="BMC 凭证"><span class="mono">{{ machine.bmc.credential_id }}</span></el-descriptions-item>
           <el-descriptions-item label="SSH 凭证"><span class="mono">{{ machine.ssh_credential_id || '—' }}</span></el-descriptions-item>
           <el-descriptions-item label="带内地址"><span class="mono">{{ machine.ssh?.address || '—' }}</span></el-descriptions-item>
           <el-descriptions-item label="注册时间">{{ formatTime(machine.created_at) }}</el-descriptions-item>
