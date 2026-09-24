@@ -7,3 +7,4 @@ playwright-report/
 
 # 会话交接文档:仅本地,永不入库(开仓清洗先例)
 HANDOFF.md
+e2e/env.local

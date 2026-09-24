@@ -9,6 +9,11 @@
 #   E2E_PG_HOST:PORT  宿主机映射地址(默认 127.0.0.1:15432)
 set -euo pipefail
 
+# 本地便捷:存在 e2e/env.local(gitignore,不随仓库分发)时先加载;
+# CI 直接用环境变量注入,两态二选一。
+ENV_LOCAL="$(dirname "$0")/env.local"
+[ -f "$ENV_LOCAL" ] && set -a && . "$ENV_LOCAL" && set +a
+
 DB=mammoth_e2e_console
 PG_CONTAINER="${E2E_PG_CONTAINER:?set E2E_PG_CONTAINER (your disposable postgres container name)}"
 PG_USER="${E2E_PG_USER:?set E2E_PG_USER (superuser inside that container)}"
