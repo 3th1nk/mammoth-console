@@ -7,9 +7,11 @@ import { getClient } from '@/api/client'
 import { unwrap } from '@/api/problem'
 import { subscribeSse, type SseHandle } from '@/api/sse'
 import { useConnectionStore } from '@/stores/connection'
+import CommandPalette from '@/components/CommandPalette.vue'
 
 const conn = useConnectionStore()
 const router = useRouter()
+const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
 
 // 待认领徽章：15s 轮询兜底（零注册台账量小、无分页）
 const pendingQuery = useQuery({
@@ -120,6 +122,13 @@ function copyPassword() {
     <el-container>
       <el-header class="topbar" height="48px">
         <div class="topbar-right">
+          <el-input
+            class="search-entry"
+            size="small"
+            readonly
+            placeholder="搜索  ⌘K"
+            @click="palette?.open()"
+          />
           <el-tag v-if="conn.capabilities" type="success" effect="plain" size="small">
             引擎 v{{ conn.capabilities.version }}
           </el-tag>
@@ -157,6 +166,8 @@ function copyPassword() {
         <el-button type="primary" @click="pwDialog = false">我已保存</el-button>
       </template>
     </el-dialog>
+
+    <CommandPalette ref="palette" />
   </el-container>
 </template>
 
@@ -196,6 +207,13 @@ function copyPassword() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.search-entry {
+  width: 180px;
+  cursor: pointer;
+}
+.search-entry :deep(.el-input__inner) {
+  cursor: pointer;
 }
 .operator {
   cursor: pointer;
