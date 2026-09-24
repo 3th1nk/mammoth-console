@@ -1,0 +1,13 @@
+Mammoth Console
+Copyright 2026 the Mammoth authors
+
+This product includes software developed as part of the Mammoth project
+(https://github.com/3th1nk/mammoth).
+
+Distro logos under assets/logos/ are reduced-color representations used
+solely to indicate supported distributions; their provenance and license
+notes are documented per-file in assets/logos/MANIFEST.md. Distribution
+names and logos remain trademarks of their respective owners.
+
+Mammoth, the engine this console drives, is licensed Apache-2.0 and lives
+at https://github.com/3th1nk/mammoth.

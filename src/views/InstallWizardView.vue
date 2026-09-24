@@ -727,7 +727,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 <div class="repo-row">
                   <el-tag size="small" effect="plain" class="kind-tag">网卡</el-tag>
                   <el-input v-model="n.mac" placeholder="网卡 MAC" class="mono" style="width: 190px" />
-                  <el-input v-model="n.ip" placeholder="IP/位，如 10.0.0.5/24" class="mono" style="width: 180px" />
+                  <el-input v-model="n.ip" placeholder="IP/位，如 198.51.100.5/24" class="mono" style="width: 180px" />
                   <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 160px" />
                   <el-input v-model="n.dns" placeholder="DNS，逗号分隔（可选）" class="mono" style="width: 180px" />
                   <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />

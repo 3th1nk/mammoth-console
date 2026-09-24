@@ -1,7 +1,7 @@
 # 04 · 引擎 API 增强（console 驱动，契约 additive 演进）
 
 > mammoth-console 对 mammoth 引擎的 API 增强需求与契约设计。引擎契约 v1.0 已冻结、允许 additive 演进（新端点/新字段/新枚举值，不改既有语义）——本文所有提案均遵守该约束。
-> console 是这些能力的第一个用户；每项都给出 console 侧消费点与验收标准。状态：**P0 四项已在 mammoth 仓库落地（契约+实现+PG 契约测试全绿），A5/A6 待排期**。
+> console 是这些能力的第一个用户；每项都给出 console 侧消费点与验收标准。状态：**A1–A7 已全部在 mammoth 仓库落地**（契约 additive + 实现 + 测试全绿；A7 落地后 console 的文件名启发式已删除）。
 
 ## 0. 总览
 

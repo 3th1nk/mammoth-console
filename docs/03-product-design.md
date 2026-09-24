@@ -1,7 +1,7 @@
 # 03 · mammoth-console 产品设计
 
 > mammoth 官方 Web 控制台的产品设计稿。依据：[01-competitive-research](./01-competitive-research.md)（行业惯例与差异化）、[02-engine-capabilities](./02-engine-capabilities.md)（引擎真实能力面）。
-> 状态：**草案（待评审）**。开放决策见 [§11](#十一开放决策待拍板)。
+> 状态：**M0–M4 已全部交付**——本文为设计定稿记录；§11 开放决策已随开发全部关闭（结论就近标注在原条目处）。
 
 ## 一、定位与目标用户
 
@@ -50,7 +50,7 @@
 
 **目录方案**：BFF 到来时仓库根保持前端不动、新增 `server/`（Go module：模板 JSON/SQLite 存储 + 引擎透传 + 简单鉴权），最终 server embed 前端静态产物回归单二进制交付。不引入 monorepo 工具链；**纯 SPA 期不做任何目录下沉**（无收益的 churn）。
 
-## 四、技术栈建议（待拍板，见 §11-D1）
+## 四、技术栈（§11-D1 已定案：Vue3 + TS + Element Plus + TanStack Query + openapi-fetch）
 
 **推荐方案 A：Vue 3 + TypeScript + Element Plus**（默认）
 

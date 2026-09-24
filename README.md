@@ -1,55 +1,99 @@
-# Mammoth Console
+<p align="center">
+  <img src="public/mammoth.svg" width="72" alt="mammoth-console" />
+</p>
 
-> [mammoth](https://github.com/3th1nk/mammoth) 裸金属装机引擎的官方 Web 控制台——开箱即用的整套前端方案。引擎保持 backend-only / API-first，本项目是其官方集成前端。
+<h1 align="center">Mammoth Console</h1>
 
-**状态：M1 已落地（骨架可看）**。Vue 3 + TypeScript + Element Plus + TanStack Query；API 类型由引擎契约生成（`npm run gen:api`）。设计文档在 [docs/](./docs/)：
+<p align="center">
+  The official web console for <a href="https://github.com/3th1nk/mammoth">Mammoth</a> —
+  the self-contained bare-metal provisioning engine.<br/>
+  <a href="./README.zh-CN.md">中文文档</a>
+</p>
 
-| 文档 | 内容 |
-|---|---|
-| [01-competitive-research](./docs/01-competitive-research.md) | 竞品调研：MAAS / Tinkerbell / Foreman / Ironic / Cobbler / Equinix Metal / RackN / 云厂商控制台，行业惯例与差异化机会 |
-| [02-engine-capabilities](./docs/02-engine-capabilities.md) | 引擎能力盘点：实体与状态机、API 端点全集、关键工作流、前端视角的现成/缺失/翻译门槛 |
-| [03-product-design](./docs/03-product-design.md) | 产品设计：定位、架构决策（SPA+伴生反代）、技术栈建议、信息架构、状态系统、关键流程（Onboarding/装机向导/任务观测）、里程碑与开放决策 |
+Mammoth turns a minimal input — a BMC address and a credential — into a running
+server. The engine is backend-only and API-first; this repository is its official
+frontend: a single-page console that talks to the engine's public API and nothing
+else.
 
-## 设计原则（摘要）
+## Highlights
 
-1. 引擎是唯一事实源：UI 无私有后端，能力边界全部由 `GET /api/v1` capabilities 驱动。
-2. 状态驱动操作：机器/任务状态决定可用动作，不可用灰置并说明原因。
-3. 异步无处不在：一切动作 202+Job，反馈即"已受理 + 任务链接"。
-4. 渲染即预览：装机意图提交前经 `install-plan` 试算，所见即所装。
-5. API-first 可视化：UI 全走公开 API，每个操作面板提供 Copy as cURL。
+- **Zero private backend** — the engine is the single source of truth. Every
+  capability boundary is driven by `GET /api/v1` (capabilities); nothing is
+  hard-coded.
+- **Full machine lifecycle** — register (with inline credential creation),
+  auto-discovery, power/media/boot actions, health & SEL live views, drive and
+  BIOS panels with two-stage confirmation wizards, deregistration.
+- **Install wizard** — four-step declarative install: machine selection with
+  busy precheck, distro image (artifact library or inline), graphical storage
+  (RAID-aware) & network (bond/VLAN) composition, package sources, scripts, and
+  an install-plan dry-run preview before submit.
+- **Live task observation** — job/task SSE, log streaming with replay and
+  end-of-stream, retry/cancel, one-time root-password capture.
+- **Zero-registration onboarding** — pending-machine sightings feed with badge,
+  claim flow, plus an explicit warning when PXE is not enabled on the engine.
+- **Built for operators** — event audit with resource/type filters, HMAC-signed
+  webhook subscriptions with a grouped searchable type picker, global
+  command palette (⌘K), dark mode, fully localized (zh-CN) UI.
 
-## 部署交付（deploy/）
+## Quick start (Docker)
 
 ```bash
-docker compose -f deploy/compose.yaml up -d --build   # 引擎同网络（服务名 mammoth）
-# 或引擎在宿主机：
+# Engine on the same docker network (service name `mammoth`):
+docker compose -f deploy/compose.yaml up -d --build
+
+# Or engine on the host:
 MAMMOTH_UPSTREAM=http://host.docker.internal:8080 docker compose -f deploy/compose.yaml up -d --build
 ```
 
-打开 `http://<host>:8081`，连接页填引擎 token、地址留空。镜像为多阶段构建
-（node 构建 → Caddy 托管 + `/api` 反代，SSE `flush_interval -1` 实时透传）；
-契约升级后先 `npm run gen:api` 重新生成类型并提交再构建。
+Open `http://<host>:8081`, paste the engine's `MAMMOTH_API_TOKEN`, leave the
+address empty (same-origin through the bundled Caddy reverse proxy, SSE
+pass-through included). After a contract upgrade, regenerate types first
+(`npm run gen:api`) and rebuild.
 
-## 下一步
-
-- ~~评审 [03-product-design §11 开放决策](./docs/03-product-design.md)~~（已随开发推进关闭）。
-- ~~M2 核心闭环~~ ✅；~~M2b 装机向导+镜像库~~ ✅；~~M2c 健康面~~ ✅；~~M3 快赢项~~ ✅。
-- 剩余：Onboarding ✅（总览开箱向导）；M3 尾巴 i18n(en)；M4 全局搜索/暗色/E2E。
-- 引擎侧 P1（见 docs/04）：A5 批量标签、A6 只读配置快照、A7 镜像发行版自动识别。
-
-## 商标声明
-
-Linux 发行版名称与 logo（Rocky、CentOS、银河麒麟、UOS、Ubuntu、Debian、Alpine）与
-Windows 均为其各自所有者的商标，仅作"指示支持该发行版"的展示使用；
-mammoth-console 与这些项目不存在隶属或背书关系。Windows 是 Microsoft 的商标。
-
-## 本地开发
+## Local development
 
 ```bash
 npm install
-npm run gen:api   # 从 ../mammoth/api/openapi.yaml 重新生成类型
-npm run dev       # http://localhost:5173，/api 反代到 127.0.0.1:8080
-npm run build     # vue-tsc 类型检查 + vite 构建
+npm run gen:api   # regenerate API types from ../mammoth/api/openapi.yaml
+npm run dev       # http://localhost:5173, /api proxied to 127.0.0.1:8080
+npm run build     # vue-tsc typecheck + vite build
 ```
 
-联调：本机起引擎（`go run ./cmd/mammoth serve --mode=all`，配 `MAMMOTH_API_TOKEN`）后，在控制台连接页 Token 填该值、地址留空（同源走 vite 代理）。发行版 logo 素材见 [assets/logos/MANIFEST.md](./assets/logos/MANIFEST.md)。
+Point the console at any engine: fill in its API token on the connect screen and
+leave the address empty (same-origin via the vite proxy). Distro logo assets are
+documented in [assets/logos/MANIFEST.md](./assets/logos/MANIFEST.md).
+
+## End-to-end tests
+
+```bash
+npm run e2e       # spins up an isolated engine (separate database, port 8081)
+                  # + vite on 5174, runs Playwright, tears down on exit
+```
+
+The suite covers connect/rehydrate, the machine lifecycle (register → detail →
+batch labels → command palette → deregister), the onboarding wizard, and the
+webhook subscription flow. See `e2e/engine.sh` for the isolated engine
+environment — database credentials are read from `E2E_PG_*` variables, so the
+suite runs against your own disposable PostgreSQL container.
+
+## Documentation
+
+| Document | Content |
+|---|---|
+| [01-competitive-research](./docs/01-competitive-research.md) | Competitive research: MAAS / Tinkerbell / Foreman / Ironic / Cobbler / Equinix Metal, industry conventions and differentiation |
+| [02-engine-capabilities](./docs/02-engine-capabilities.md) | Engine capability survey: entities, state machines, API surface, frontend translation gaps |
+| [03-product-design](./docs/03-product-design.md) | Product design: positioning, architecture (SPA + companion reverse proxy), IA, key flows, milestones |
+| [04-engine-api-enhancements](./docs/04-engine-api-enhancements.md) | Console-driven engine API enhancements (A1–A7), all landed upstream |
+
+## Tech stack
+
+Vue 3 + TypeScript + Element Plus + TanStack Query · openapi-fetch with
+contract-generated types · native SSE wrappers · Vite + vue-tsc · Playwright ·
+Caddy for the production container.
+
+## License & trademarks
+
+Apache-2.0 — see [LICENSE](./LICENSE). Distro names and logos (Rocky, CentOS,
+Kylin, UOS, Ubuntu, Debian, Alpine) and Windows are trademarks of their
+respective owners, used solely to indicate supported distros; no affiliation or
+endorsement. Windows is a trademark of Microsoft. See also [NOTICE](./NOTICE).

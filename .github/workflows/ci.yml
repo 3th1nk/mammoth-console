@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # typecheck 只对前端源;build 还会跑 vite 打包
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mammoth
+          POSTGRES_PASSWORD: mammoth-e2e
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U mammoth"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      # console 与引擎必须是同级目录(e2e/engine.sh 按 ../mammoth 定位引擎仓)
+      - uses: actions/checkout@v4
+        with:
+          path: console
+      - uses: actions/checkout@v4
+        with:
+          repository: 3th1nk/mammoth
+          path: mammoth
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mammoth/go.mod
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: console
+      - run: npm ci
+        working-directory: console
+      - name: Run E2E
+        env:
+          E2E_PG_CONTAINER: ${{ job.services.postgres.id }}
+          E2E_PG_USER: mammoth
+          E2E_PG_PASSWORD: mammoth-e2e
+          E2E_PG_HOST: 127.0.0.1
+          E2E_PG_PORT: "15432"
+        working-directory: console
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: console/test-results/
+          retention-days: 7
