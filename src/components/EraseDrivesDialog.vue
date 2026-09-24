@@ -176,7 +176,7 @@ async function submit() {
   gap: 6px;
   margin: 10px 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .drive-table {
   margin: 6px 0 10px;

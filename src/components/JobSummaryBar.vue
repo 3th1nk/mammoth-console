@@ -61,7 +61,7 @@ const parts = computed(() =>
   height: 10px;
   border-radius: 5px;
   overflow: hidden;
-  background: #f0f2f5;
+  background: var(--el-fill-color);
 }
 .bar.compact {
   height: 6px;
@@ -74,7 +74,7 @@ const parts = computed(() =>
   gap: 12px;
   margin-top: 6px;
   font-size: 12px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   flex-wrap: wrap;
 }
 .count {

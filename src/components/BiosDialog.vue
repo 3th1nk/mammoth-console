@@ -170,7 +170,7 @@ async function submit() {
 .policy-line {
   margin: 10px 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .attr-table {
   margin: 6px 0 10px;

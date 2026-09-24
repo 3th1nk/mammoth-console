@@ -9,7 +9,7 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
 }
 
 .page {
@@ -26,7 +26,7 @@ body {
 .page-title {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 0;
 }
 
@@ -36,5 +36,5 @@ body {
 }
 
 .text-muted {
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }

@@ -1020,7 +1020,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
   margin-top: 6px;
   width: 100%;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.6;
 }
 .disk-block,

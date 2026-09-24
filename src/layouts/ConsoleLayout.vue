@@ -7,9 +7,11 @@ import { getClient } from '@/api/client'
 import { unwrap } from '@/api/problem'
 import { subscribeSse, type SseHandle } from '@/api/sse'
 import { useConnectionStore } from '@/stores/connection'
+import { useThemeStore } from '@/stores/theme'
 import CommandPalette from '@/components/CommandPalette.vue'
 
 const conn = useConnectionStore()
+const theme = useThemeStore()
 const router = useRouter()
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
 
@@ -129,6 +131,11 @@ function copyPassword() {
             placeholder="搜索  ⌘K"
             @click="palette?.open()"
           />
+          <el-tooltip :content="theme.dark ? '切到亮色' : '切到暗色'" placement="bottom">
+            <el-button size="small" circle text @click="theme.toggle()">
+              <el-icon><Moon v-if="!theme.dark" /><Sunny v-else /></el-icon>
+            </el-button>
+          </el-tooltip>
           <el-tag v-if="conn.capabilities" type="success" effect="plain" size="small">
             引擎 v{{ conn.capabilities.version }}
           </el-tag>
@@ -176,7 +183,7 @@ function copyPassword() {
   height: 100%;
 }
 .aside {
-  background: #fff;
+  background: var(--el-bg-color);
   border-right: 1px solid #e4e7ed;
   display: flex;
   flex-direction: column;
@@ -187,7 +194,7 @@ function copyPassword() {
   gap: 8px;
   padding: 14px 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .brand img {
   width: 26px;
@@ -200,7 +207,7 @@ function copyPassword() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  background: #fff;
+  background: var(--el-bg-color);
   border-bottom: 1px solid #e4e7ed;
 }
 .topbar-right {
@@ -225,7 +232,7 @@ function copyPassword() {
   height: 30px;
   border-radius: 50%;
   border: 2px solid #e4e7ed;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   display: block;
 }
 .main {
@@ -235,7 +242,7 @@ function copyPassword() {
 .pw-value {
   margin: 12px 0 8px;
   padding: 10px 12px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 6px;
   font-size: 14px;
   word-break: break-all;

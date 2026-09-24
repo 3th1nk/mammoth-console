@@ -239,7 +239,7 @@ const configRows = computed<ConfigRow[]>(() => {
   padding: 10px 12px;
   border: 1px solid #ebeef5;
   border-radius: 8px;
-  background: #fafbfc;
+  background: var(--el-fill-color-extra-light);
 }
 .distro-card .head {
   display: flex;
@@ -250,7 +250,7 @@ const configRows = computed<ConfigRow[]>(() => {
 .distro-card .fname {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .distro-card .ver {
   display: flex;
@@ -261,7 +261,7 @@ const configRows = computed<ConfigRow[]>(() => {
 }
 .distro-card .ver-name {
   font-size: 12.5px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 .distro-card .carriers {
   display: inline-flex;

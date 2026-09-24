@@ -337,7 +337,7 @@ function copySecret() {
 .secret {
   margin: 12px 0 8px;
   padding: 10px 12px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 6px;
   font-size: 13px;
   word-break: break-all;

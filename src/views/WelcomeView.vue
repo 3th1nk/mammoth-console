@@ -71,7 +71,7 @@ async function connect() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 .card {
   width: 460px;
@@ -88,16 +88,16 @@ async function connect() {
 .hero h1 {
   font-size: 20px;
   margin: 10px 0 4px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .sub {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin: 0;
   font-size: 13px;
 }
 .hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.5;
   margin-top: 4px;
 }

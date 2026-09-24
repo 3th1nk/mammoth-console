@@ -289,7 +289,7 @@ onUnmounted(() => {
   height: 20px;
   border-radius: 50%;
   background: #409eff;
-  color: #fff;
+  color: var(--el-bg-color);
   font-size: 12px;
   display: inline-flex;
   align-items: center;
@@ -302,11 +302,11 @@ onUnmounted(() => {
 .ob-title {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 .ob-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 .donut {
   height: 240px;
