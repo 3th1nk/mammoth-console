@@ -3,6 +3,8 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
+import EraseDrivesDialog from './EraseDrivesDialog.vue'
+import BiosDialog from './BiosDialog.vue'
 import { getClient } from '@/api/client'
 import { errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
@@ -30,6 +32,8 @@ const bootOnce = ref(true)
 const mediaDialog = ref(false)
 const mediaUrl = ref('')
 const ejectAfter = ref(false)
+const eraseDialog = ref(false)
+const biosDialog = ref(false)
 
 const POWER_CONFIRM: Record<string, string> = {
   power_off: '硬关机不等操作系统落盘，可能丢失数据。确定执行？',
@@ -84,6 +88,14 @@ function onCommand(cmd: string) {
   }
   if (cmd === 'media') {
     mediaDialog.value = true
+    return
+  }
+  if (cmd === 'erase') {
+    eraseDialog.value = true
+    return
+  }
+  if (cmd === 'bios') {
+    biosDialog.value = true
     return
   }
   if (cmd === 'install') {
@@ -187,8 +199,8 @@ function submitMedia() {
           <el-dropdown-item divided command="boot">设置启动设备…</el-dropdown-item>
           <el-dropdown-item command="media">挂载介质…</el-dropdown-item>
           <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-          <el-dropdown-item divided disabled>BIOS 属性（两段式，M3）</el-dropdown-item>
-          <el-dropdown-item disabled>擦盘（两段式，M3）</el-dropdown-item>
+          <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
+          <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
           <el-dropdown-item divided command="install">重装系统…</el-dropdown-item>
         </el-dropdown-menu>
       </template>
@@ -217,6 +229,9 @@ function submitMedia() {
       <el-button type="primary" @click="submitBoot">提交</el-button>
     </template>
   </el-dialog>
+
+  <EraseDrivesDialog v-model="eraseDialog" :machine-id="machineId" />
+  <BiosDialog v-model="biosDialog" :machine-id="machineId" />
 
   <el-dialog v-model="mediaDialog" title="挂载虚拟介质" width="500px" @click.stop>
     <el-form label-width="90px">
