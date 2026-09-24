@@ -55,6 +55,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Effective configuration snapshot (redacted)
+         * @description Read-only projection of the effective runtime configuration, keyed by
+         *     the environment variable names (the 12-factor fact source). Values are
+         *     stringified; empty effective values read as null. Keys listed in
+         *     `redacted` never carry their value: configured ones read as `***`,
+         *     unset ones as null — configured/unconfigured state is visible, values
+         *     are not. There is deliberately no write path: configuration is
+         *     deployment-owned, changes go through the env/compose layer.
+         */
+        get: operations["getConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/credentials": {
         parameters: {
             query?: never;
@@ -139,6 +165,31 @@ export interface paths {
         head?: never;
         /** Update mutable machine fields */
         patch: operations["updateMachine"];
+        trace?: never;
+    };
+    "/api/v1/machines/batch-labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one label add/remove set to many machines
+         * @description Synchronous and all-or-nothing: labels are pure metadata, so no job
+         *     is created and the whole batch commits in a single transaction — any
+         *     unknown machine id rejects the batch in full. Per machine, remove
+         *     deletes by label key, then add upserts its pairs; the same key in
+         *     both is rejected. The response carries fresh snapshots of every
+         *     affected machine, in request order.
+         */
+        post: operations["batchUpdateMachineLabels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/machines/{id}/current-tasks": {
@@ -976,6 +1027,22 @@ export interface components {
             /** @description Whether the windows agent apply-image pathway (boot.installer=agent) is usable on this deployment — PXE on plus the alpine extended ISO pool configured (MAMMOTH_WINDOWS_APPLY_ALPINE_ISO). */
             windows_agent_installer?: boolean;
         };
+        /**
+         * @description Read-only projection of the effective runtime configuration, keyed by
+         *     the environment variable names (the 12-factor fact source). The write
+         *     path is intentionally absent: configuration is deployment-owned, and
+         *     changes go through the env/compose layer with a restart — a runtime
+         *     settings API would create a second configuration source with unclear
+         *     persistence semantics, exposed to a single-token trust model.
+         */
+        ConfigSnapshot: {
+            /** @description Effective values keyed by env name, stringified (durations in Go duration notation). Each value is a string, or null when the effective value is empty/unset. Keys listed in redacted read as "***" when configured and null when unset — configured/unconfigured state is visible, values are not. */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description The denylist of keys whose values never leave the process (authenticating material, account names, internal infrastructure endpoints). */
+            redacted: string[];
+        };
         DistroSupport: {
             name: string;
             /** @enum {string} */
@@ -1137,6 +1204,20 @@ export interface components {
             };
             ssh_credential_id?: string | null;
             ssh?: components["schemas"]["MachineSSH"];
+        };
+        /** @description One label add/remove set applied to every named machine. The same key must not appear in both add and remove; at least one of the two must be non-empty. */
+        BatchLabelUpdate: {
+            machine_ids: components["schemas"]["MachineId"][];
+            /** @description Label pairs to upsert on every machine. */
+            add?: {
+                [key: string]: string;
+            };
+            /** @description Label keys to delete from every machine (missing keys are a no-op for that machine). */
+            remove?: string[];
+        };
+        BatchLabelResult: {
+            /** @description Fresh snapshot of every affected machine, in request order. */
+            machines: components["schemas"]["Machine"][];
         };
         Machine: {
             id: components["schemas"]["MachineId"];
@@ -2042,6 +2123,26 @@ export interface operations {
             };
         };
     };
+    getConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective configuration snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigSnapshot"];
+                };
+            };
+        };
+    };
     listCredentials: {
         parameters: {
             query?: never;
@@ -2269,6 +2370,35 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    batchUpdateMachineLabels: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Replay safety for creating POSTs; within the window a replay returns the original result. */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchLabelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Affected machines (fresh snapshots, request order) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchLabelResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     listMachineCurrentTasks: {

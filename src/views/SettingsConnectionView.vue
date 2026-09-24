@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useQuery } from '@tanstack/vue-query'
 import { useConnectionStore } from '@/stores/connection'
-import { errorMessage } from '@/api/problem'
+import { getClient } from '@/api/client'
+import { errorMessage, unwrap } from '@/api/problem'
 import DistroBadge from '@/components/DistroBadge.vue'
 import { resolveDistroKey, familyLabel, type DistroFamilyKey } from '@/utils/distro'
 
@@ -63,6 +65,25 @@ function disconnect() {
   conn.disconnect()
   router.push({ name: 'welcome' })
 }
+
+// ── 当前生效配置（引擎 A6，只读脱敏快照） ───────────────────────────────────
+// 配置是进程生命周期的：拉一次就够（staleTime Infinity），手动刷新兜底。
+const cfgQuery = useQuery({
+  queryKey: ['config'],
+  queryFn: async () => unwrap(await getClient().GET('/api/v1/config')),
+  staleTime: Infinity,
+  refetchOnWindowFocus: false,
+})
+
+type ConfigRow = { key: string; value: unknown; redacted: boolean }
+const configRows = computed<ConfigRow[]>(() => {
+  const cfg = cfgQuery.data.value
+  if (!cfg) return []
+  const redacted = new Set(cfg.redacted ?? [])
+  return Object.entries(cfg.config ?? {})
+    .map(([key, value]) => ({ key, value, redacted: redacted.has(key) }))
+    .sort((a, b) => a.key.localeCompare(b.key))
+})
 </script>
 
 <template>
@@ -154,6 +175,45 @@ function disconnect() {
         </div>
       </div>
     </el-card>
+
+    <el-card shadow="never" class="mb">
+      <template #header>
+        <div class="cfg-header">
+          <span>当前生效配置（引擎只读快照，敏感项已脱敏）</span>
+          <el-button size="small" :loading="cfgQuery.isFetching.value" @click="() => cfgQuery.refetch()">
+            刷新
+          </el-button>
+        </div>
+      </template>
+      <el-collapse>
+        <el-collapse-item :title="`展开查看 ${configRows.length} 项（env 名为键，与部署环境文件一致）`">
+          <el-table :data="configRows" size="small" border max-height="420">
+            <el-table-column label="环境变量" width="380">
+              <template #default="{ row }">
+                <span class="mono cfg-key">{{ row.key }}</span>
+                <el-tag v-if="row.redacted" size="small" type="warning" effect="plain" class="cfg-tag">脱敏</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="生效值" min-width="220">
+              <template #default="{ row }">
+                <template v-if="row.redacted">
+                  <template v-if="row.value !== null && row.value !== undefined">
+                    <span class="mono">***</span><span class="text-muted">（已配置）</span>
+                  </template>
+                  <span v-else class="text-muted">未配置</span>
+                </template>
+                <span v-else-if="row.value === null || row.value === undefined" class="text-muted">未设置</span>
+                <span v-else class="mono">{{ String(row.value) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-collapse-item>
+      </el-collapse>
+      <div class="text-muted cfg-note">
+        修改配置请走部署层（编辑 env 文件或 compose 环境段后重启引擎）——引擎有意不提供运行时写路径，
+        Token / 密钥 / 数据库地址 / SMB 与 relay 凭据等敏感项只显示已配置状态，不显示值。
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -206,5 +266,20 @@ function disconnect() {
 .distro-card .carriers {
   display: inline-flex;
   gap: 4px;
+}
+.cfg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cfg-key {
+  font-size: 12.5px;
+}
+.cfg-tag {
+  margin-left: 8px;
+}
+.cfg-note {
+  margin-top: 10px;
+  font-size: 12.5px;
 }
 </style>

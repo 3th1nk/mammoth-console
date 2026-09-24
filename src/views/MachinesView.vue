@@ -100,17 +100,24 @@ function startInstall() {
   router.push({ name: 'install-wizard', query: { machines: ids } })
 }
 
-// 批量打标签：引擎暂无批量端点（A5 待落地），前端并发 PATCH 循环
+// 批量打标签：引擎 A5 批量端点（单事务全有或全无）——添加 upsert + 按 key 删除
 const batchLabelVisible = ref(false)
 const batchChips = ref<string[]>([])
 const batchInput = ref('')
+const batchRemoveKeys = ref<string[]>([])
 const batchApplying = ref(false)
-const batchDone = ref(0)
+
+// 所选机器标签 key 的并集——可删除项从这里勾选。
+const removableKeys = computed(() => {
+  const set = new Set<string>()
+  for (const m of selected.value) for (const k of Object.keys(m.labels ?? {})) set.add(k)
+  return [...set].sort()
+})
 
 function openBatchLabels() {
   batchChips.value = []
   batchInput.value = ''
-  batchDone.value = 0
+  batchRemoveKeys.value = []
   batchLabelVisible.value = true
 }
 
@@ -126,42 +133,41 @@ function addBatchChip() {
 }
 
 async function applyBatchLabels() {
-  if (batchChips.value.length === 0) {
-    ElMessage.warning('请先添加标签')
-    return
-  }
-  batchApplying.value = true
   const newLabels = Object.fromEntries(
     batchChips.value.map((c) => {
       const i = c.indexOf('=')
       return [c.slice(0, i), c.slice(i + 1)] as [string, string]
     }),
   )
-  let ok = 0
-  await Promise.all(
-    selected.value.map(async (m) => {
-      try {
-        await unwrap(
-          await getClient().PATCH('/api/v1/machines/{id}', {
-            params: { path: { id: m.id } },
-            body: { labels: { ...m.labels, ...newLabels } },
-          }),
-        )
-        ok += 1
-      } catch {
-        // 单台失败不中断，最后汇总
-      }
-      batchDone.value += 1
-    }),
-  )
-  batchApplying.value = false
-  if (ok === selected.value.length) {
-    ElMessage.success(`已为 ${ok} 台机器更新标签`)
-    batchLabelVisible.value = false
-  } else {
-    ElMessage.warning(`${ok}/${selected.value.length} 台成功，详情见机器列表`)
+  const clash = batchRemoveKeys.value.filter((k) => k in newLabels)
+  if (clash.length > 0) {
+    ElMessage.warning(`标签 ${clash.join('、')} 同时在添加与删除里，请二选一`)
+    return
   }
-  void query.refetch()
+  if (Object.keys(newLabels).length === 0 && batchRemoveKeys.value.length === 0) {
+    ElMessage.warning('请先添加或勾选要删除的标签')
+    return
+  }
+  batchApplying.value = true
+  try {
+    await unwrap(
+      await getClient().POST('/api/v1/machines/batch-labels', {
+        body: {
+          machine_ids: selected.value.map((m) => m.id),
+          add: Object.keys(newLabels).length > 0 ? newLabels : undefined,
+          remove: batchRemoveKeys.value.length > 0 ? batchRemoveKeys.value : undefined,
+        },
+      }),
+    )
+    ElMessage.success(`已为 ${selected.value.length} 台机器更新标签`)
+    batchLabelVisible.value = false
+    void query.refetch()
+  } catch (e) {
+    // 引擎全有或全无：失败即整体未生效，直接报错
+    ElMessage.error(errorMessage(e))
+  } finally {
+    batchApplying.value = false
+  }
 }
 
 function onRegistered(m: Machine) {
@@ -338,7 +344,7 @@ function onActionSubmitted() {
 
     <el-dialog v-model="batchLabelVisible" :title="`批量打标签（${selected.length} 台）`" width="480px">
       <el-form label-position="top" @submit.prevent="applyBatchLabels">
-        <el-form-item label="标签（k=v，回车添加；已存在的同 key 会被覆盖）">
+        <el-form-item label="添加标签（k=v，回车添加；已存在的同 key 会被覆盖）">
           <el-input v-model="batchInput" placeholder="env=prod" @keyup.enter="addBatchChip" />
           <el-tag
             v-for="chip in batchChips"
@@ -351,8 +357,15 @@ function onActionSubmitted() {
             {{ chip }}
           </el-tag>
         </el-form-item>
-        <div v-if="batchApplying" class="text-muted" style="font-size: 13px">
-          应用中… {{ batchDone }}/{{ selected.length }}
+        <el-form-item v-if="removableKeys.length > 0" label="删除标签（所选机器现有标签的并集）">
+          <el-checkbox-group v-model="batchRemoveKeys">
+            <el-checkbox v-for="k in removableKeys" :key="k" :value="k" style="margin-right: 14px">
+              {{ k }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <div class="text-muted" style="font-size: 12.5px">
+          引擎单事务提交：任一台失败则整批不生效。
         </div>
       </el-form>
       <template #footer>
