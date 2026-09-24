@@ -314,8 +314,11 @@ function copySecret() {
             按资源类型分组；支持搜索，也可手动输入清单之外的新类型（投递按精确匹配）。
           </div>
         </el-form-item>
-        <el-form-item label="资源过滤（可选，仅投递该资源的事件）">
-          <el-input v-model="form.resource_id" placeholder="job_x9k2 / mch_xxxx" class="mono" />
+        <el-form-item label="资源 ID 过滤（可选，仅投递该资源的事件）">
+          <el-input v-model="form.resource_id" placeholder="如 mch_xxxx（跟踪某台机器）或 job_x9k2（跟踪某个作业）" class="mono" />
+          <div class="text-muted" style="font-size: 12px; margin-top: 4px">
+            仅支持单个资源 ID 精确匹配；要跟踪多个资源请为每个资源各建一条订阅，留空则投递全部资源的事件。
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
