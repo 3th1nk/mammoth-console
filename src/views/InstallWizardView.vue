@@ -551,6 +551,8 @@ const policyDraftInstaller = computed({
   },
 })
 
+const KEEP_LABEL: Record<string, string> = { full: '完整支持', partial: '部分支持', none: '不支持' }
+
 const HEALTH_GATE_DESC: Record<string, string> = {
   off: '不检查，直接装机',
   report: '坏盘写入试算警告，不拦截',
@@ -662,7 +664,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div v-if="autoDistroHint" class="hint" style="color: #67c23a">{{ autoDistroHint }}</div>
           <div v-if="distroChoice" class="hint">
             {{ distros.find((d) => d.name === distroChoice)?.family }} 方言 ·
-            保留分区 {{ distros.find((d) => d.name === distroChoice)?.keep_partition_support }}
+            保留分区 {{ KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—' }}
           </div>
         </el-form-item>
 

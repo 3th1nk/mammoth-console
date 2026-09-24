@@ -11,6 +11,9 @@ import { resolveDistroKey, familyLabel, type DistroFamilyKey } from '@/utils/dis
 const conn = useConnectionStore()
 const router = useRouter()
 
+const BOOT_LABEL: Record<string, string> = { virtual_media: '虚拟介质', pxe: 'PXE 网络引导' }
+const CONFIRM_LABEL: Record<string, string> = { required: '必须确认', optional: '可选确认' }
+
 const distroGroups = computed(() => {
   const map = new Map<DistroFamilyKey, { name: string; family?: string; pxe_support?: string }[]>()
   for (const d of conn.capabilities?.distros ?? []) {
@@ -107,7 +110,7 @@ function disconnect() {
     <el-card shadow="never" header="引擎能力（GET /api/v1，只读事实源）">
       <el-descriptions :column="3" border size="small" class="mb-inner">
         <el-descriptions-item label="契约版本">{{ conn.capabilities?.version ?? '—' }}</el-descriptions-item>
-        <el-descriptions-item label="缺省启动载体">{{ conn.capabilities?.boot_strategy_default ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="缺省启动载体">{{ BOOT_LABEL[conn.capabilities?.boot_strategy_default ?? ''] ?? conn.capabilities?.boot_strategy_default ?? '—' }}</el-descriptions-item>
         <el-descriptions-item label="资源注册">{{ conn.capabilities?.resources?.join('、') || '—' }}</el-descriptions-item>
         <el-descriptions-item label="PXE / 零注册">
           {{ conn.capabilities?.netboot_enabled ? '已启用' : '未启用' }}
@@ -118,8 +121,8 @@ function disconnect() {
         <el-descriptions-item label="Windows agent 通路">
           {{ conn.capabilities?.windows_agent_installer ? '可用' : '不可用' }}
         </el-descriptions-item>
-        <el-descriptions-item label="BIOS 修改确认">{{ conn.capabilities?.bios_set_confirm ?? '—' }}</el-descriptions-item>
-        <el-descriptions-item label="擦盘确认">{{ conn.capabilities?.drive_erase_confirm ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="BIOS 修改确认">{{ CONFIRM_LABEL[conn.capabilities?.bios_set_confirm ?? ''] ?? conn.capabilities?.bios_set_confirm ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="擦盘确认">{{ CONFIRM_LABEL[conn.capabilities?.drive_erase_confirm ?? ''] ?? conn.capabilities?.drive_erase_confirm ?? '—' }}</el-descriptions-item>
       </el-descriptions>
 
       <div class="distro-grid">

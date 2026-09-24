@@ -152,10 +152,10 @@ async function retry() {
         <el-descriptions :column="4" size="small" border>
           <el-descriptions-item label="机器"><span class="mono">{{ task.machine_id }}</span></el-descriptions-item>
           <el-descriptions-item label="流程">{{ task.flow_name }}</el-descriptions-item>
-          <el-descriptions-item label="尝试">#{{ task.attempt }}</el-descriptions-item>
-          <el-descriptions-item label="应答文件">
-            <a v-if="task.answer_url" :href="task.answer_url" target="_blank" class="mono">answer_url</a>
-            <span v-else class="text-muted">—</span>
+          <el-descriptions-item label="执行轮次">第 {{ task.attempt }} 次{{ task.attempt > 1 ? '（重试续跑）' : '' }}</el-descriptions-item>
+          <el-descriptions-item label="应答文件地址">
+            <a v-if="task.answer_url" :href="task.answer_url" target="_blank" class="mono">查看</a>
+            <span v-else class="text-muted">—（虚拟介质装机无此地址）</span>
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(task.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatTime(task.updated_at) }}</el-descriptions-item>

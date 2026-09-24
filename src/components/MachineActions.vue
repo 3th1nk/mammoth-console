@@ -174,9 +174,9 @@ function submitMedia() {
             <el-dropdown-item divided command="boot">设置启动设备…</el-dropdown-item>
             <el-dropdown-item command="media">挂载介质…</el-dropdown-item>
             <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-            <el-dropdown-item divided disabled>BIOS 属性（M3 · 两段式）</el-dropdown-item>
-            <el-dropdown-item disabled>擦盘（M3 · 两段式）</el-dropdown-item>
-            <el-dropdown-item disabled>重装系统（装机向导，下批提供）</el-dropdown-item>
+            <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
+            <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
+            <el-dropdown-item command="install">重装系统…</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

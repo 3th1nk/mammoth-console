@@ -151,7 +151,7 @@ function openTask(t: components['schemas']['Task']) {
           <el-descriptions-item label="创建时间">{{ formatTime(job.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="结束时间">{{ formatTime(job.finished_at) }}</el-descriptions-item>
           <el-descriptions-item label="并发 / 失败策略">
-            {{ job.policy?.concurrency ?? '—' }} / {{ job.policy?.on_task_failure ?? '—' }}
+            {{ job.policy?.concurrency ?? '—' }} / {{ job.policy?.on_task_failure === 'abort_batch' ? '中止整批' : '继续其余' }}
           </el-descriptions-item>
         </el-descriptions>
       </el-card>

@@ -113,13 +113,21 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="名称" min-width="140">
+        <el-table-column label="名称" min-width="130">
           <template #default="{ row }">{{ row.name || '—' }}</template>
         </el-table-column>
-        <el-table-column label="source_url" min-width="240">
+        <el-table-column label="发行版" width="110">
+          <template #default="{ row }">
+            <span v-if="row.distro || row.version" class="mono">
+              {{ [row.distro, row.version].filter(Boolean).join(' ') }}
+            </span>
+            <span v-else class="text-muted" title="引擎识别后将自动展示">识别中</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源地址" min-width="240">
           <template #default="{ row }"><span class="mono url">{{ row.source_url }}</span></template>
         </el-table-column>
-        <el-table-column label="sha256" min-width="200">
+        <el-table-column label="SHA256" min-width="200">
           <template #default="{ row }">
             <span class="mono sha" :title="row.sha256">{{ row.sha256 }}</span>
           </template>
@@ -164,18 +172,18 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
         <el-form-item label="镜像地址（http/s，引擎可达）" required>
           <el-input v-model="reg.source_url" placeholder="https://mirror.example.com/rocky9.iso" class="mono" />
         </el-form-item>
-        <el-form-item label="sha256（64 位十六进制）" required>
+        <el-form-item label="SHA256" required>
           <el-input v-model="reg.sha256" placeholder="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" class="mono" />
-          <div class="hint">引擎按它做拉取门禁：不符即弃、不落缓存。</div>
+          <div class="hint">引擎按它做拉取门禁：不符即弃、不落缓存。发行版与版本留空时，拉取完成后自动识别。</div>
         </el-form-item>
         <el-row :gutter="10">
           <el-col :span="12">
-            <el-form-item label="发行版（可选，留空由引擎自动识别）">
+            <el-form-item label="发行版">
               <el-input v-model="reg.distro" placeholder="rocky" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="版本（可选，留空由引擎自动识别）">
+            <el-form-item label="版本">
               <el-input v-model="reg.version" placeholder="9.4" />
             </el-form-item>
           </el-col>
