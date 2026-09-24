@@ -12,7 +12,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api': {
+        // E2E 用独立引擎实例（VITE_API_TARGET=http://127.0.0.1:8081）,
+        // 日常开发走默认 8080。
+        target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
     },
   },
 })

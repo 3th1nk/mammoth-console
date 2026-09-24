@@ -343,7 +343,7 @@ function onActionSubmitted() {
     <RegisterMachineDialog v-model="registerVisible" @registered="onRegistered" />
 
     <el-dialog v-model="batchLabelVisible" :title="`批量打标签（${selected.length} 台）`" width="480px">
-      <el-form label-position="top" @submit.prevent="applyBatchLabels">
+      <el-form label-position="top" @submit.prevent>
         <el-form-item label="添加标签（k=v，回车添加；已存在的同 key 会被覆盖）">
           <el-input v-model="batchInput" placeholder="env=prod" @keyup.enter="addBatchChip" />
           <el-tag

@@ -6,7 +6,7 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import EraseDrivesDialog from './EraseDrivesDialog.vue'
 import BiosDialog from './BiosDialog.vue'
 import { getClient } from '@/api/client'
-import { errorMessage } from '@/api/problem'
+import { errorMessage, unwrap } from '@/api/problem'
 import type { components } from '@/api/types.gen'
 
 /**
@@ -102,6 +102,9 @@ function onCommand(cmd: string) {
     router.push({ name: 'install-wizard', query: { machines: props.machineId } })
     return
   }
+  if (cmd === 'deregister') {
+    return void deregister()
+  }
   const [type] = cmd.split(':')
   switch (type) {
     case 'power_on':
@@ -120,6 +123,32 @@ function onCommand(cmd: string) {
       return void submit({ type: 'eject_media' }, POWER_CONFIRM['eject_media'])
     case 'discover':
       return void submit({ type: 'discover', probe: 'auto' })
+  }
+}
+
+// 注销 = DELETE /machines/{id}:删除登记与档案(任务/事件历史按引擎语义保留)。
+// 列表与详情在 submitted 后各自刷新;详情页刷新后 404 由其自身的错误态呈现。
+async function deregister() {
+  try {
+    await ElMessageBox.confirm(
+      '注销将删除该机器的登记与硬件档案（任务与事件历史保留在作业里）。确定注销？',
+      `注销机器 ${props.machineId}`,
+      { type: 'warning', confirmButtonText: '注销', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  submitting.value = true
+  try {
+    await unwrap(
+      await getClient().DELETE('/api/v1/machines/{id}', { params: { path: { id: props.machineId } } }),
+    )
+    ElMessage.success('机器已注销')
+    emit('submitted')
+  } catch (e) {
+    ElMessage.error(errorMessage(e))
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -177,6 +206,7 @@ function submitMedia() {
             <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
             <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
             <el-dropdown-item command="install">重装系统…</el-dropdown-item>
+            <el-dropdown-item divided command="deregister" class="deregister-item">注销机器…</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -202,6 +232,7 @@ function submitMedia() {
           <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
           <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
           <el-dropdown-item divided command="install">重装系统…</el-dropdown-item>
+          <el-dropdown-item divided command="deregister" class="deregister-item">注销机器…</el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>
@@ -257,5 +288,11 @@ function submitMedia() {
 }
 .actions-wrap.row {
   gap: 6px;
+}
+</style>
+
+<style scoped>
+.deregister-item {
+  color: var(--el-color-danger);
 }
 </style>

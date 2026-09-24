@@ -70,5 +70,10 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ConsoleApiError) return e.message
   if (e instanceof TypeError) return '无法连接引擎：请检查地址与网络'
   if (e instanceof Error) return e.message
+  // openapi-fetch 的 error 是反序列化后的 problem JSON(普通对象,非 Error
+  // 实例)——个别调用点直接 throw 它,这里按 problem 形态兜底翻译。
+  if (e !== null && typeof e === 'object') {
+    return new ConsoleApiError(e as Partial<Problem>, 0).message
+  }
   return String(e)
 }
