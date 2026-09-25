@@ -35,6 +35,32 @@ else.
   webhook subscriptions with a grouped searchable type picker, global
   command palette (⌘K), dark mode, fully localized (zh-CN) UI.
 
+## Screenshots
+
+**Dashboard** — machine state distribution, running tasks, onboarding wizard.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Machines** — state badges, labels, inline power actions, fuzzy search, command palette (⌘K).
+
+![Machines](docs/screenshots/machines.png)
+
+**Machine detail** — probed hardware spec (disks / NICs), live BMC health and SEL views.
+
+![Machine detail](docs/screenshots/machine-detail.png)
+
+**Install wizard** — declarative intent: image, storage, network, hostname, credentials, with an install-plan dry run before submit.
+
+![Install wizard](docs/screenshots/install-wizard.png)
+
+**Jobs** — batch progress bars, SSE live task observation, streaming logs with retry/cancel.
+
+![Jobs](docs/screenshots/jobs.png)
+
+**Dark mode** — Element Plus dark variables with a persisted preference.
+
+![Dark mode](docs/screenshots/dashboard-dark.png)
+
 ## Quick start (Docker)
 
 ```bash

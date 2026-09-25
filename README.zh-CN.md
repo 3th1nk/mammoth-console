@@ -20,6 +20,32 @@ Mammoth 的输入最小化到一个带外地址和一份凭证，产出即是一
 - **零注册入门**——待认领机器实时流入 + 导航徽章 + 认领流程；引擎未启用 PXE 时给出醒目指引。
 - **为运维而生**——事件审计（资源/类型过滤）、HMAC 签名 webhook 订阅（分组可搜索类型选择器）、全局命令面板（⌘K）、暗色模式、全量中文界面。
 
+## 界面预览
+
+**总览**——机器状态分布、进行中任务、开箱向导。
+
+![总览](docs/screenshots/dashboard.png)
+
+**机器列表**——状态徽章、标签、行内电源动作、模糊搜索、全局命令面板（⌘K）。
+
+![机器列表](docs/screenshots/machines.png)
+
+**机器详情**——探针采集的硬件规格（磁盘/网卡）、BMC 实时健康与 SEL 视图。
+
+![机器详情](docs/screenshots/machine-detail.png)
+
+**装机向导**——声明式意图：镜像、存储、网络、主机名、凭据，提交前 install-plan 试算预览。
+
+![装机向导](docs/screenshots/install-wizard.png)
+
+**任务**——批量进度条、SSE 实时任务观测、日志流（回放+尾随）、重试/取消。
+
+![任务](docs/screenshots/jobs.png)
+
+**暗色模式**——Element Plus 暗色变量，偏好持久化。
+
+![暗色模式](docs/screenshots/dashboard-dark.png)
+
 ## 快速开始（Docker）
 
 ```bash
