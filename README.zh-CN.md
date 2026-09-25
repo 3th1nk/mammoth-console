@@ -42,6 +42,10 @@ Mammoth 的输入最小化到一个带外地址和一份凭证，产出即是一
 
 ![任务](docs/screenshots/jobs.png)
 
+**任务详情**——六阶段 stepper（逐阶段耗时）、失败详情、日志查看器（级别过滤、跟踪尾部、安装器输出经 syslog 归因落库）。
+
+![任务详情](docs/screenshots/task-detail.png)
+
 **暗色模式**——Element Plus 暗色变量，偏好持久化。
 
 ![暗色模式](docs/screenshots/dashboard-dark.png)

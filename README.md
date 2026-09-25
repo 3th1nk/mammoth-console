@@ -57,6 +57,10 @@ else.
 
 ![Jobs](docs/screenshots/jobs.png)
 
+**Task detail** — six-stage stepper with per-stage timing, failure details, and the streaming log viewer (level filters, follow-tail, syslog-attributed installer output).
+
+![Task detail](docs/screenshots/task-detail.png)
+
 **Dark mode** — Element Plus dark variables with a persisted preference.
 
 ![Dark mode](docs/screenshots/dashboard-dark.png)
