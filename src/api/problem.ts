@@ -18,6 +18,7 @@ const CODE_MESSAGES: Record<string, string> = {
   SCHEMA_UNKNOWN_CREDENTIAL: '引用的凭证不存在',
   INSTALL_TIMEOUT: '安装超时',
   INSTALL_NOT_REACHABLE: '安装器未按预期回调（网络或引导顺序问题）',
+  INSTALL_BOND_MISMATCH: '装后 bond 核验不符：实际成员/模式/链路监测与声明不一致（检查交换机聚合口与成员 MAC）',
   MEDIA_MOUNT_FAILED: '虚拟介质挂载失败',
   MEDIA_BUILD_FAILED: '引导介质构建失败：镜像文件损坏或不是可引导 ISO，请检查镜像库中的文件',
   JOB_CONFLICT: '任务状态冲突',

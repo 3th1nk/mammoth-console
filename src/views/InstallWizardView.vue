@@ -188,10 +188,11 @@ const bondSupported = computed(() => !distroName.value.toLowerCase().includes('d
 
 interface BaseIface { ip: string; gateway: string; dns: string; mtu?: number }
 interface NicRow extends BaseIface { kind: 'nic'; mac: string }
-interface BondRow extends BaseIface { kind: 'bond'; name: string; mode: string; miimon: string; memberMacs: string[]; paramsRaw: string }
+interface BondRow extends BaseIface { kind: 'bond'; mode: string; miimon: string; memberMacs: string[]; paramsRaw: string }
 type NetRow = NicRow | BondRow
 
-const BOND_MODES = ['active-backup', '802.3ad', 'balance-tlb', 'balance-rr', 'balance-xor', 'broadcast']
+// 与引擎白名单（docs/04 §5.2）一致：七种内核模式
+const BOND_MODES = ['active-backup', '802.3ad', 'balance-tlb', 'balance-rr', 'balance-xor', 'broadcast', 'balance-alb']
 
 const nics = ref<NetRow[]>([])
 const vlans = ref<{ id: string; link: string; ip: string }[]>([])
@@ -200,10 +201,22 @@ function addNic() {
   nics.value.push({ kind: 'nic', mac: '', ip: '', gateway: '', dns: '' })
 }
 function addBond() {
-  nics.value.push({ kind: 'bond', name: `bond${nics.value.filter((n) => n.kind === 'bond').length}`, mode: 'active-backup', miimon: '100', memberMacs: ['', ''], paramsRaw: '', ip: '', gateway: '', dns: '' })
+  nics.value.push({ kind: 'bond', mode: 'active-backup', miimon: '100', memberMacs: ['', ''], paramsRaw: '', ip: '', gateway: '', dns: '' })
 }
 function addVlan() {
   vlans.value.push({ id: '', link: 'bond0', ip: '' })
+}
+
+// 引擎按声明顺序命名 bond（render.BondName：bond0、bond1…，与行位置无关）——
+// 名称是派生事实不是用户输入；VLAN 挂载名（vlan.link）引用这里的派生名。
+function bondNameOf(n: NetRow): string {
+  let seq = 0
+  for (const row of nics.value) {
+    if (row.kind !== 'bond') continue
+    if (row === n) return `bond${seq}`
+    seq++
+  }
+  return 'bond0'
 }
 
 // ── 脚本（明文输入，提交时自动 UTF-8 base64） ──────────────────────────────
@@ -416,14 +429,14 @@ function validateStep2(): string | null {
       } else {
         const members = n.memberMacs.filter((m) => m.trim())
         if (members.length > 0 && members.length !== n.memberMacs.length) {
-          return `bond "${n.name}" 有未填的成员 MAC`
+          return `bond "${bondNameOf(n)}" 有未填的成员 MAC`
         }
         if (n.ip.trim() && members.length === 0) {
-          return `bond "${n.name}" 需要至少一个成员 MAC`
+          return `bond "${bondNameOf(n)}" 需要至少一个成员 MAC`
         }
         if (n.paramsRaw.trim()) {
           try { JSON.parse(n.paramsRaw) } catch {
-            return `bond "${n.name}" 的高级参数不是合法 JSON`
+            return `bond "${bondNameOf(n)}" 的高级参数不是合法 JSON`
           }
         }
       }
@@ -737,7 +750,9 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               <template v-else>
                 <div class="repo-row">
                   <el-tag size="small" type="warning" effect="plain" class="kind-tag">bond</el-tag>
-                  <el-input v-model="n.name" placeholder="bond0" class="mono" style="width: 110px" />
+                  <el-tooltip content="bond 名称由引擎按声明顺序分配（bond0、bond1…），VLAN 挂载时引用该名称" placement="top">
+                    <el-input :model-value="bondNameOf(n)" disabled class="mono" style="width: 110px" />
+                  </el-tooltip>
                   <el-select v-model="n.mode" style="width: 170px">
                     <el-option v-for="m in BOND_MODES" :key="m" :value="m" :label="m" />
                   </el-select>
@@ -746,7 +761,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                   <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />
                 </div>
                 <div class="bond-members">
-                  <div class="text-muted" style="font-size: 12px; width: 100%">成员网卡 MAC（按 miimon 链路监测）：</div>
+                  <div class="text-muted" style="font-size: 12px; width: 100%">成员网卡 MAC（按 miimon 链路监测）；高级参数也接受 cloud-init v2 拼写（如 {"mii-monitor-interval":100}），未知键会被引擎渲染期拒绝：</div>
                   <div v-for="(_m, mi) in n.memberMacs" :key="mi" class="repo-row">
                     <el-input v-model="n.memberMacs[mi]" placeholder="成员网卡 MAC" class="mono" style="width: 240px" />
                     <el-button type="danger" plain size="small" :icon="Delete" @click="n.memberMacs.splice(mi, 1)" />
