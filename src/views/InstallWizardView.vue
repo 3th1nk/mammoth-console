@@ -12,6 +12,7 @@ import DistroBadge from '@/components/DistroBadge.vue'
 import StateBadge from '@/components/StateBadge.vue'
 import { resolveDistroKey } from '@/utils/distro'
 import { formatBytes } from '@/utils/format'
+import { uuid } from '@/utils/uuid'
 
 type InstallSpec = components['schemas']['InstallSpec']
 type Machine = components['schemas']['Machine']
@@ -531,7 +532,7 @@ async function submit() {
   submittingJob.value = true
   try {
     const { data } = await getClient().POST('/api/v1/jobs', {
-      params: { header: { 'Idempotency-Key': crypto.randomUUID() } },
+      params: { header: { 'Idempotency-Key': uuid() } },
       body: {
         type: 'install',
         targets: { machine_ids: readyTargets.value.map((r) => r.machine.id as never) },

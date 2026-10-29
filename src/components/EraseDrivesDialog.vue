@@ -8,6 +8,7 @@ import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
 import { formatBytes } from '@/utils/format'
+import { uuid } from '@/utils/uuid'
 import { useConnectionStore } from '@/stores/connection'
 
 /**
@@ -70,7 +71,7 @@ async function submit() {
     const { data } = await getClient().POST('/api/v1/machines/{id}/actions', {
       params: {
         path: { id: props.machineId },
-        header: { 'Idempotency-Key': crypto.randomUUID() },
+        header: { 'Idempotency-Key': uuid() },
       },
       body: { type: 'erase_drives', serials: selected.value, confirm: true } as never,
     })

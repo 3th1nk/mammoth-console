@@ -8,6 +8,7 @@ import BiosDialog from './BiosDialog.vue'
 import { getClient } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/problem'
 import type { components } from '@/api/types.gen'
+import { uuid } from '@/utils/uuid'
 
 /**
  * 机器动作入口。
@@ -60,7 +61,7 @@ async function submit(action: ActionRequest, confirmText?: string) {
     const { data } = await getClient().POST('/api/v1/machines/{id}/actions', {
       params: {
         path: { id: props.machineId },
-        header: { 'Idempotency-Key': crypto.randomUUID() },
+        header: { 'Idempotency-Key': uuid() },
       },
       body: action,
     })

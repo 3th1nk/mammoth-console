@@ -69,7 +69,14 @@ export function codeText(code?: string): string | undefined {
 /** 任意抛出物 → 展示文案（配合 ElMessage.error 使用）。 */
 export function errorMessage(e: unknown): string {
   if (e instanceof ConsoleApiError) return e.message
-  if (e instanceof TypeError) return '无法连接引擎：请检查地址与网络'
+  if (e instanceof TypeError) {
+    // fetch 网络失败的典型消息（Chrome: Failed to fetch / Firefox: NetworkError /
+    // Safari: Load failed，CORS 拦截也在内）；其余 TypeError 原样透出，不把代码
+    // 错误（如非安全上下文缺 crypto.randomUUID）伪装成连接故障。
+    return /failed to fetch|networkerror|load failed/i.test(e.message)
+      ? '无法连接引擎：请检查地址与网络'
+      : e.message
+  }
   if (e instanceof Error) return e.message
   // openapi-fetch 的 error 是反序列化后的 problem JSON(普通对象,非 Error
   // 实例)——个别调用点直接 throw 它,这里按 problem 形态兜底翻译。
