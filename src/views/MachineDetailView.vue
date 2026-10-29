@@ -41,16 +41,32 @@ const diskHealthBySerial = computed(() => {
   return map
 })
 
-// BMC 实时健康与 SEL（同步活读；IPMI/不支持 → 422 降级提示）
+// BMC 实时健康与 SEL（同步活读；IPMI/不支持 → 422 降级提示）。
+// 两者都是引擎同步走 BMC 的多请求遍历，慢控制器下可能远超预期——前端 60s
+// 强制中止（engine 自身预算 30s，正常会先返回 BMC_UNREACHABLE；超时兜底
+// 针对旧引擎/代理卡死），retry 关掉让错误立即可见而不是静默翻倍等待。
+const LIVE_READ_TIMEOUT_MS = 60_000
 const healthQuery = useQuery({
   queryKey: computed(() => ['machine-health', props.id]),
+  retry: 0,
   queryFn: async () =>
-    unwrap(await getClient().GET('/api/v1/machines/{id}/health', { params: { path: { id: props.id } } })),
+    unwrap(
+      await getClient().GET('/api/v1/machines/{id}/health', {
+        params: { path: { id: props.id } },
+        signal: AbortSignal.timeout(LIVE_READ_TIMEOUT_MS),
+      }),
+    ),
 })
 const selQuery = useQuery({
   queryKey: computed(() => ['machine-sel', props.id]),
+  retry: 0,
   queryFn: async () =>
-    unwrap(await getClient().GET('/api/v1/machines/{id}/sel', { params: { path: { id: props.id } } })),
+    unwrap(
+      await getClient().GET('/api/v1/machines/{id}/sel', {
+        params: { path: { id: props.id } },
+        signal: AbortSignal.timeout(LIVE_READ_TIMEOUT_MS),
+      }),
+    ),
 })
 
 // KVM：一次性 URL 端点；真机多数控制器不支持（502 BMC_UNSUPPORTED），按能力降级提示

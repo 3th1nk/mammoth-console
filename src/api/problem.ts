@@ -70,6 +70,10 @@ export function codeText(code?: string): string | undefined {
 /** 任意抛出物 → 展示文案（配合 ElMessage.error 使用）。 */
 export function errorMessage(e: unknown): string {
   if (e instanceof ConsoleApiError) return e.message
+  if (e instanceof DOMException && e.name === 'TimeoutError') {
+    // AbortSignal.timeout 触发的请求中止（如 BMC 实时读取的前端兜底超时）。
+    return '请求超时：引擎长时间未响应，请稍后重试'
+  }
   if (e instanceof TypeError) {
     // fetch 网络失败的典型消息（Chrome: Failed to fetch / Firefox: NetworkError /
     // Safari: Load failed，CORS 拦截也在内）；其余 TypeError 原样透出，不把代码
