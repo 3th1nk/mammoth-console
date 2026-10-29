@@ -197,8 +197,8 @@ function submitMedia() {
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="discover:auto">盘查（自动探针）</el-dropdown-item>
-            <el-dropdown-item divided command="reboot">软重启</el-dropdown-item>
-            <el-dropdown-item command="power_off">关机（硬）</el-dropdown-item>
+            <el-dropdown-item divided command="power_off">硬关机</el-dropdown-item>
+            <el-dropdown-item command="reboot">软重启</el-dropdown-item>
             <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
             <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
             <el-dropdown-item divided command="boot">设置启动设备…</el-dropdown-item>
@@ -222,9 +222,9 @@ function submitMedia() {
         <el-dropdown-menu>
           <el-dropdown-item command="discover:auto">盘查（自动探针）</el-dropdown-item>
           <el-dropdown-item divided command="power_on">开机</el-dropdown-item>
-          <el-dropdown-item command="reboot">软重启</el-dropdown-item>
           <el-dropdown-item command="soft_off">软关机</el-dropdown-item>
-          <el-dropdown-item command="power_off">关机（硬）</el-dropdown-item>
+          <el-dropdown-item command="power_off">硬关机</el-dropdown-item>
+          <el-dropdown-item command="reboot">软重启</el-dropdown-item>
           <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
           <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
           <el-dropdown-item divided command="boot">设置启动设备…</el-dropdown-item>
