@@ -1696,6 +1696,16 @@ export interface components {
                 checksum?: string;
                 /** @description Explicitly declared (no implicit detection), e.g. rocky9. */
                 distro: string;
+                /**
+                 * @description Windows only: explicit /IMAGE/NAME inside install.wim for the
+                 *     unattend's image selection, overriding the driver default
+                 *     ("Windows Server <year> SERVERSTANDARDCORE" — Standard Core,
+                 *     docs/compat/distros.md §windows 镜像契约). For non-standard
+                 *     media (custom-built, cloud-exported, Essentials) whose image
+                 *     names carry a different form. Matched case-insensitively by
+                 *     substring, same as the default. Ignored by other distros.
+                 */
+                windows_image_name?: string;
             };
             storage?: components["schemas"]["StorageSpec"];
             network?: components["schemas"]["NetworkInterface"][];

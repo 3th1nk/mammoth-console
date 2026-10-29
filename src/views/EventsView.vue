@@ -95,13 +95,13 @@ async function submitCreate() {
   creating.value = true
   try {
     const types = form.types.map((t) => t.trim()).filter(Boolean)
-    const { data } = await getClient().POST('/api/v1/webhooks', {
+    const data = await unwrap(await getClient().POST('/api/v1/webhooks', {
       body: {
         url: form.url.trim(),
         types: types.length > 0 ? types : undefined,
         resource_id: form.resource_id.trim() || undefined,
       },
-    })
+    }))
     const created = data as components['schemas']['WebhookCreated'] | undefined
     createVisible.value = false
     createdSecret.value = {

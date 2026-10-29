@@ -14,6 +14,7 @@ const CODE_MESSAGES: Record<string, string> = {
   LAYOUT_DISK_NOT_FOUND: '指定的磁盘未找到（选择器未命中任何盘）',
   LAYOUT_SNAPSHOT_REQUIRED: '尚无分区快照：请先做分区级盘查（SSH 或内存盘探针）',
   SCHEMA_INVALID_STORAGE: '存储配置不合法',
+  SCHEMA_INVALID_BOOT_INSTALLER: '引导通路不合法：boot.installer（setup/agent/auto）仅用于 Windows 发行版，Linux 请省略该字段',
   SCHEMA_FIRMWARE_MISMATCH: '固件不匹配：UEFI 专用介质不能派给 BIOS 机器',
   SCHEMA_UNKNOWN_CREDENTIAL: '引用的凭证不存在',
   INSTALL_TIMEOUT: '安装超时',

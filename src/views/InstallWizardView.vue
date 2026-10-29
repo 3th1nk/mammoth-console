@@ -396,7 +396,15 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
       })),
     }
   }
-  out.boot = { strategy: spec.boot?.strategy ?? 'virtual_media', installer: spec.boot?.installer ?? 'auto' }
+  // installer 是 windows 专用通路（setup/agent/auto），linux 方言携带即被引擎
+  // SCHEMA_INVALID_BOOT_INSTALLER 拒绝——仅 windows 序列化。生成的 BootSpec 因
+  // 字段带 default 被标为必填（openapi-typescript 行为），而契约本无 required，
+  // 省略合法，故断言。
+  out.boot = (
+    isWindows.value
+      ? { strategy: spec.boot?.strategy ?? 'virtual_media', installer: spec.boot?.installer ?? 'auto' }
+      : { strategy: spec.boot?.strategy ?? 'virtual_media' }
+  ) as InstallSpec['boot']
   return out
 }
 
@@ -531,7 +539,7 @@ const policy = reactive({
 async function submit() {
   submittingJob.value = true
   try {
-    const { data } = await getClient().POST('/api/v1/jobs', {
+    const data = await unwrap(await getClient().POST('/api/v1/jobs', {
       params: { header: { 'Idempotency-Key': uuid() } },
       body: {
         type: 'install',
@@ -545,7 +553,7 @@ async function submit() {
           health_gate: policy.health_gate,
         },
       },
-    })
+    }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
     ElMessage.success(`装机任务 ${jobId} 已受理`)
     void queryClient.invalidateQueries({ queryKey: ['jobs'] })

@@ -58,13 +58,13 @@ async function submit(action: ActionRequest, confirmText?: string) {
   }
   submitting.value = true
   try {
-    const { data } = await getClient().POST('/api/v1/machines/{id}/actions', {
+    const data = await unwrap(await getClient().POST('/api/v1/machines/{id}/actions', {
       params: {
         path: { id: props.machineId },
         header: { 'Idempotency-Key': uuid() },
       },
       body: action,
-    })
+    }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
     ElNotification.success({
       title: '已受理',

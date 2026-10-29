@@ -78,13 +78,13 @@ async function submit() {
   }
   submitting.value = true
   try {
-    const { data } = await getClient().POST('/api/v1/machines/{id}/actions', {
+    const data = await unwrap(await getClient().POST('/api/v1/machines/{id}/actions', {
       params: {
         path: { id: props.machineId },
         header: { 'Idempotency-Key': uuid() },
       },
       body: { type: 'set_bios_attributes', attributes, confirm: true } as never,
-    })
+    }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
     ElNotification.success({
       title: 'BIOS 修改已受理',
