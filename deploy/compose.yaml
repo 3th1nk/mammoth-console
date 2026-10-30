@@ -1,13 +1,36 @@
 # mammoth-console 伴生交付：静态控制台 + 反代到 mammoth 引擎
 #
-# 场景 A（推荐）：引擎已在同一 docker 网络运行（服务名 mammoth）
-#   docker compose -f deploy/compose.yaml up -d --build
-#
-# 场景 B：引擎跑在宿主机
-#   MAMMOTH_UPSTREAM=http://host.docker.internal:8080 \
+# 默认（无 profile）只起 console，适配引擎已在别处运行的场景：
+#   场景 A：引擎已在同一 docker 网络（服务名 mammoth）
 #     docker compose -f deploy/compose.yaml up -d --build
+#   场景 B：引擎跑在宿主机
+#     MAMMOTH_UPSTREAM=http://host.docker.internal:8080 \
+#       docker compose -f deploy/compose.yaml up -d --build
+#   打开 http://<host>:8081 ，在连接页填引擎 token、地址留空即可。
 #
-# 打开 http://<host>:8081 ，在连接页填引擎 token、地址留空即可。
+# 场景 C（--profile engine）：连同引擎 all-in-one 一起从零起，与引擎仓库
+# deploy/compose.all-in-one.yml 同步：--mode=all 的 builder 镜像 +
+# PostgreSQL + 介质目录 bind mount（./data/media，需对 uid 1000 可写：
+#   mkdir -p deploy/data/media && sudo chown 1000 deploy/data/media）。
+# 引擎源码取自旁路检出：默认 ../../mammoth（相对本文件），可用
+# MAMMOTH_ENGINE_DIR 改指其他位置。
+#
+#   MAMMOTH_HOST_IP=<BMC 可达地址> \
+#   MAMMOTH_MASTER_KEY=$(openssl rand -base64 32) \
+#   docker compose -f deploy/compose.yaml --profile engine up -d --build
+#
+# 两个可选 sidecar 与引擎 compose 同名同 profile，默认不启动：
+#   --profile nfs    内核 nfsd 管理（介质导出，BMC vMedia / casper nfsroot）
+#   --profile samba  Windows wimboot setup 通路的 SMB2 只读导出（445）
+#
+#   docker compose -f deploy/compose.yaml \
+#     --profile engine --profile nfs --profile samba up -d --build
+#
+# 变量可放 deploy/.env（compose 自动读取）。引擎服务的必填变量不用 :?
+# 硬失败——那会连累默认（仅 console）的 up：缺 MAMMOTH_MASTER_KEY 引擎
+# 启动即报错；缺 MAMMOTH_HOST_IP 则机器面地址（EXTERNAL_URL /
+# MEDIA_BASE_URI / SMB UNC）静默失效，务必设置。
+name: mammoth-console
 services:
   console:
     build:
@@ -22,34 +45,123 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
-  # ── 场景 C：连同引擎一起从零评估（取消注释）────────────────────────────
-  # mammoth:
-  #   image: ghcr.io/3th1nk/mammoth:latest
-  #   environment:
-  #     MAMMOTH_DATABASE_URL: postgres://mammoth:mammoth@postgres:5432/mammoth?sslmode=disable
-  #     MAMMOTH_API_TOKEN: ${MAMMOTH_API_TOKEN:-change-me}
-  #     MAMMOTH_MASTER_KEY: ${MAMMOTH_MASTER_KEY}   # base64 32 字节，必填
-  #     MAMMOTH_MEDIA_DIR: /var/lib/mammoth/media
-  #   volumes:
-  #     - mammoth-media:/var/lib/mammoth/media
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #
-  # postgres:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_USER: mammoth
-  #     POSTGRES_PASSWORD: mammoth
-  #     POSTGRES_DB: mammoth
-  #   volumes:
-  #     - mammoth-pg:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U mammoth"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 10
-#
-# volumes:
-#   mammoth-media:
-#   mammoth-pg:
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["engine"]
+    environment:
+      POSTGRES_USER: mammoth
+      POSTGRES_PASSWORD: mammoth
+      POSTGRES_DB: mammoth
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mammoth -d mammoth"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  mammoth:
+    build:
+      context: ${MAMMOTH_ENGINE_DIR:-../../mammoth}
+      # builder 镜像（alpine + xorriso/wimlib/7z），不是 distroless：介质
+      # 组装在进程内 shell 出这些工具（bootiso.go）；distroless 只适合纯
+      # 文件服务分面（api）。
+      dockerfile: Dockerfile.builder
+    profiles: ["engine"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # builder 镜像的默认 CMD 是 --mode=builder 分面，引擎拒绝该模式启动；
+    # all-in-one 需要每个分面都在进程内。
+    command: ["serve", "--mode=all"]
+    # PXE 绑定特权 UDP 端口（67/69/4011）——镜像以 uid 1000 运行，开启
+    # PXE 时必须显式授予该 capability。
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      MAMMOTH_MODE: all
+      MAMMOTH_DATABASE_URL: postgres://mammoth:mammoth@postgres:5432/mammoth?sslmode=disable
+      MAMMOTH_HTTP_ADDR: ":8080"
+      # 机器从该地址取应答文件/安装池/iPXE 蹦床（inst.ks=、casper
+      # seedfrom、/netboot/...）——必须 BMC/机器可达，绝不能是 loopback。
+      MAMMOTH_EXTERNAL_URL: http://${MAMMOTH_HOST_IP:-}:8080
+      # 部署方提供的密钥；绝不烘进镜像。MASTER_KEY 为空引擎启动即失败，
+      # 用 openssl rand -base64 32 生成一次；轮换会作废已存 BMC 凭证。
+      MAMMOTH_API_TOKEN: ${MAMMOTH_API_TOKEN:-change-me}
+      MAMMOTH_MASTER_KEY: ${MAMMOTH_MASTER_KEY:-}
+      MAMMOTH_LOG_FORMAT: json
+      # 介质目录宿主机 bind mount：组装出的装机 ISO 在容器重建后仍在，且
+      # 同一宿主机目录就是内核 nfsd 导出的目录（nfsd sidecar 挂在
+      # /export/media；改用宿主机 nfs-server 时把 BASE_URI 指向真实
+      # /etc/exports 路径——引擎 ops.md §4.7）。builder 镜像以 uid 1000
+      # （mammoth）运行：宿主机目录须对其可写。
+      MAMMOTH_MEDIA_DIR: /media
+      MAMMOTH_MEDIA_BASE_URI: nfs://${MAMMOTH_HOST_IP:-}/export/media
+      # 华为 iBMC 挂载约 12-15s（ISO9660 元数据校验），VmmControl Connect
+      # 概率性失败（驱动重试 ≤3 次）——有华为机器时先调大。默认 30s。
+      # MAMMOTH_BMC_TIMEOUT: 90s
+      MAMMOTH_BMC_TLS_INSECURE: ${MAMMOTH_BMC_TLS_INSECURE:-false}
+      # Windows wimboot setup 通路消费 samba sidecar 的 SMB 导出（--profile
+      # samba 启用；agent/auto 安装器不走 SMB，引擎 ops.md §4.5.2）。共享
+      # 名须与下方 samba 的 MAMMOTH_SMB_SHARE_NAME 一致。
+      MAMMOTH_WINDOWS_INSTALL_SMB_UNC: '\\${MAMMOTH_HOST_IP:-}\mammoth-media'
+      # ubuntu（autoinstall）安装环境的 apt 镜像（仅 PXE 载体）：subiquity
+      # 在安装开始时检查镜像，离线/无外网装机网段会被检查卡在对话框
+      # （真机 2288H V5）。国内部署：http://mirrors.aliyun.com/ubuntu/
+      MAMMOTH_UBUNTU_APT_MIRROR: ${MAMMOTH_UBUNTU_APT_MIRROR:-}
+      # PXE 网络启动（可选，引擎 ops.md §4.5）：容器必须在装机 L2 上
+      # （host/macvlan 网络——bridge 的端口映射承载不了 DHCP 广播）。
+      # 默认关。
+      MAMMOTH_PXE_ENABLED: ${MAMMOTH_PXE_ENABLED:-false}
+      MAMMOTH_PXE_NEXT_SERVER: ${MAMMOTH_PXE_NEXT_SERVER:-}
+      # 池模式（引擎 ops.md §4.5）：引擎只向有装机任务的机器发地址，可与
+      # 站点 DHCP 共存（该网段其余地址归站点 DHCP 权威）。
+      MAMMOTH_PXE_DHCP_POOL: ${MAMMOTH_PXE_DHCP_POOL:-}
+      MAMMOTH_PXE_DHCP_ROUTER: ${MAMMOTH_PXE_DHCP_ROUTER:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/media:/media
+
+  # 内核 nfsd sidecar：管理宿主机内核的 NFS 服务（privileged 容器；nfsd
+  # 线程与 socket 是内核全局的）。默认关——--profile nfs 启用。要求 Linux
+  # 宿主机内核支持 nfsd（Docker Desktop 虚拟机不带——改用宿主机
+  # nfs-server，引擎 ops.md §4.7）且宿主机 111/2049/20048 空闲。
+  nfsd:
+    build:
+      context: ${MAMMOTH_ENGINE_DIR:-../../mammoth}
+      dockerfile: deploy/Dockerfile.nfsd
+    profiles: ["nfs"]
+    privileged: true
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      MAMMOTH_NFS_EXPORT_DIR: /export/media
+      MAMMOTH_NFS_EXPORT_OPTIONS: "*(ro,insecure,no_root_squash,no_subtree_check)"
+      MAMMOTH_NFS_MOUNTD_PORT: "20048"
+    volumes:
+      - ./data/media:/export/media
+      # 多数发行版 nfsd 是可加载模块——把宿主机模块目录暴露给尽力而为的
+      # modprobe（nfsd 内建/已加载时是 no-op）。
+      - /lib/modules:/lib/modules:ro
+
+  # Windows wimboot setup 通路的 guest 只读 SMB2 导出（WinPE 在 startnet
+  # 里映射共享，引擎 ops.md §4.5.2）。默认关——--profile samba 启用。
+  # agent/apply-image 安装器不需要它（安装源走引擎 HTTP）。需要宿主机
+  # 445 空闲（单播 TCP，bridge 网络即可——不像 nfsd 不需要 host 网络）。
+  samba:
+    build:
+      context: ${MAMMOTH_ENGINE_DIR:-../../mammoth}
+      dockerfile: deploy/Dockerfile.samba
+    profiles: ["samba"]
+    restart: unless-stopped
+    environment:
+      MAMMOTH_SMB_SHARE_NAME: mammoth-media
+      MAMMOTH_SMB_EXPORT_DIR: /export/media
+    ports:
+      - "445:445"
+    volumes:
+      - ./data/media:/export/media
+
+volumes:
+  pgdata:
