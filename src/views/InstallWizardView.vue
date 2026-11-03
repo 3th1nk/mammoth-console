@@ -181,8 +181,8 @@ function addPartition(d: DiskRow) {
   d.partitions.push({ size: '100G', fs: 'xfs', mount: '' })
 }
 
-// ── 网络：默认自动（DHCP） / 静态（网卡 + bond + vlan） ─────────────────────
-const netMode = ref<'auto' | 'static'>('auto')
+// ── 网络：默认静态（网卡 + bond + vlan） / 自动（装机环境 DHCP） ─────────────
+const netMode = ref<'auto' | 'static'>('static')
 // 方言边界（docs/04 §5.4 矩阵）：debian 不支持 bond/vlan，前端即时预禁
 const distroName = computed(() => spec.image.distro)
 const bondSupported = computed(() => !distroName.value.toLowerCase().includes('debian'))
@@ -403,10 +403,22 @@ function onMemberKeyChange(n: BondRow) {
   n.memberValues = n.memberValues.map((m) => (opts.has(m.trim()) ? m : ''))
 }
 
-// 切到静态配置时空手起步：自动带出建议网卡（无盘查数据则留空手填）
-watch(netMode, (mode) => {
-  if (mode === 'static' && nics.value.length === 0) addNic()
-})
+// 静态为默认且盘查数据异步晚到：初始立即起步一行；数据到达后仅为仍为空的匹配值
+// 补建议网卡（手动输入的自定义值不在清单里，不能被清单刷新冲掉）
+watch([netMode, nicOptionsByKey], ([mode]) => {
+  if (mode !== 'static') return
+  if (nics.value.length === 0) {
+    addNic()
+    return
+  }
+  for (const n of nics.value) {
+    if (n.kind !== 'nic' || n.matchValue.trim()) continue
+    const used = usedMatchValues(n)
+    n.matchValue = nicOptionsByKey.value[n.matchKey].find(
+      (o) => !used.has(`${n.matchKey}:${o.value.toLowerCase()}`),
+    )?.value ?? ''
+  }
+}, { immediate: true })
 
 // ── 脚本（明文输入，提交时自动 UTF-8 base64） ──────────────────────────────
 interface ScriptRow {
