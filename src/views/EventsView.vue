@@ -7,6 +7,7 @@ import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
+import { copyToClipboard } from '@/utils/clipboard'
 import {
   EVENT_TYPE_GROUPS,
   eventTypeLabel,
@@ -139,8 +140,9 @@ const RESOURCE_TYPES = ['job', 'task', 'machine', 'credential', 'pending', 'webh
 
 function copySecret() {
   if (createdSecret.value?.secret) {
-    void navigator.clipboard.writeText(createdSecret.value.secret)
-    ElMessage.success('已复制到剪贴板')
+    void copyToClipboard(createdSecret.value.secret).then((ok) =>
+      ok ? ElMessage.success('已复制到剪贴板') : ElMessage.warning('复制失败，请手动选中复制'),
+    )
   }
 }
 </script>

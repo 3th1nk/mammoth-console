@@ -8,6 +8,7 @@ import { unwrap } from '@/api/problem'
 import { subscribeSse, type SseHandle } from '@/api/sse'
 import { useConnectionStore } from '@/stores/connection'
 import { useThemeStore } from '@/stores/theme'
+import { copyToClipboard } from '@/utils/clipboard'
 import CommandPalette from '@/components/CommandPalette.vue'
 
 const conn = useConnectionStore()
@@ -77,8 +78,9 @@ watch(
 
 function copyPassword() {
   if (pwInfo.value?.password) {
-    void navigator.clipboard.writeText(pwInfo.value.password)
-    ElMessage.success('已复制到剪贴板')
+    void copyToClipboard(pwInfo.value.password).then((ok) =>
+      ok ? ElMessage.success('已复制到剪贴板') : ElMessage.warning('复制失败，请手动选中复制'),
+    )
   }
 }
 </script>
