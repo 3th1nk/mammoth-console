@@ -187,25 +187,103 @@ const netMode = ref<'auto' | 'static'>('auto')
 const distroName = computed(() => spec.image.distro)
 const bondSupported = computed(() => !distroName.value.toLowerCase().includes('debian'))
 
-interface BaseIface { ip: string; gateway: string; dns: string; mtu?: number }
-interface NicRow extends BaseIface { kind: 'nic'; mac: string }
-interface BondRow extends BaseIface { kind: 'bond'; mode: string; miimon: string; memberMacs: string[]; paramsRaw: string }
+type MatchKey = 'mac' | 'name' | 'pci_address'
+interface BaseIface { key: string; ip: string; gateway: string; dns: string; mtu?: number }
+interface NicRow extends BaseIface { kind: 'nic'; matchKey: MatchKey; matchValue: string }
+interface BondRow extends BaseIface { kind: 'bond'; mode: string; miimon: string; memberKey: MatchKey; memberValues: string[]; paramsRaw: string }
 type NetRow = NicRow | BondRow
+
+// 匹配键与引擎 InterfaceMatch 同源（稳定序 mac > pci_address > name）；
+// 批量共享 spec 时按键取各目标机该键值的交集。
+const MATCH_KEYS: MatchKey[] = ['mac', 'name', 'pci_address']
+const MATCH_KEY_LABEL: Record<MatchKey, string> = { mac: 'MAC', name: '网卡名', pci_address: 'PCI 地址' }
 
 // 与引擎白名单（docs/04 §5.2）一致：七种内核模式
 const BOND_MODES = ['active-backup', '802.3ad', 'balance-tlb', 'balance-rr', 'balance-xor', 'broadcast', 'balance-alb']
 
 const nics = ref<NetRow[]>([])
-const vlans = ref<{ id: string; link: string; ip: string }[]>([])
+const vlans = ref<{ key: string; id: string; link: string; ip: string }[]>([])
 
 function addNic() {
-  nics.value.push({ kind: 'nic', mac: '', ip: '', gateway: '', dns: '' })
+  nics.value.push({ kind: 'nic', key: uuid(), ...suggestedMatch(), ip: '', gateway: '', dns: '' })
 }
 function addBond() {
-  nics.value.push({ kind: 'bond', mode: 'active-backup', miimon: '100', memberMacs: ['', ''], paramsRaw: '', ip: '', gateway: '', dns: '' })
+  nics.value.push({ kind: 'bond', key: uuid(), mode: 'active-backup', miimon: '100', memberKey: 'mac', memberValues: ['', ''], paramsRaw: '', ip: '', gateway: '', dns: '' })
 }
 function addVlan() {
-  vlans.value.push({ id: '', link: 'bond0', ip: '' })
+  vlans.value.push({ key: uuid(), id: '', link: 'bond0', ip: '' })
+}
+
+// ── 批量静态地址：逐台矩阵（docs/04 §5.0 bindings） ─────────────────────────
+// spec 是共享模板，地址以 {var:ip_*} 占位；每台的真实 IP/主机名走
+// JobTargets.targets[].vars 提交，引擎在提交期逐台解析。
+const isBatchStatic = computed(() => netMode.value === 'static' && readyTargets.value.length > 1)
+
+interface MatrixCol { key: string; varName: string; label: string }
+const shortVal = (s: string) => (s.length > 20 ? s.slice(0, 18) + '…' : s)
+// 参与分配的接口列：网卡需有匹配值、bond 需有成员、VLAN 需有 ID；
+// varName 即模板占位名，buildSpec 与 machineVars 共用这一份序列，不会漂移
+const matrixColumns = computed<MatrixCol[]>(() => {
+  if (!isBatchStatic.value) return []
+  const cols: MatrixCol[] = []
+  let nicSeq = 0, bondSeq = 0, vlanSeq = 0
+  for (const n of nics.value) {
+    if (n.kind === 'nic') {
+      if (!n.matchValue.trim()) continue
+      cols.push({ key: n.key, varName: `ip_nic${++nicSeq}`, label: `网卡 · ${shortVal(n.matchValue)}` })
+    } else {
+      if (n.memberValues.every((m) => !m.trim())) continue
+      cols.push({ key: n.key, varName: `ip_bond${++bondSeq}`, label: bondNameOf(n) })
+    }
+  }
+  for (const v of vlans.value) {
+    if (!v.id.trim()) continue
+    cols.push({ key: v.key, varName: `ip_vlan${++vlanSeq}`, label: `VLAN ${v.id}` })
+  }
+  return cols
+})
+
+const ipMatrix = ref<Record<string, Record<string, string>>>({})
+const hostnameMatrix = ref<Record<string, string>>({})
+
+function matrixCell(mid: string, key: string): string {
+  return ipMatrix.value[mid]?.[key] ?? ''
+}
+function setMatrixCell(mid: string, key: string, v: string) {
+  if (!ipMatrix.value[mid]) ipMatrix.value[mid] = {}
+  ipMatrix.value[mid]![key] = v
+}
+
+const batchHostnameUsed = computed(() =>
+  readyTargets.value.some((r) => (hostnameMatrix.value[r.machine.id] ?? '').trim() !== ''),
+)
+
+// 单台机器的绑定表：模板里每个 {var:*} 各得一行；无矩阵时无 vars
+function machineVars(mid: string): Record<string, string> | undefined {
+  if (!isBatchStatic.value) return undefined
+  const vars: Record<string, string> = {}
+  for (const col of matrixColumns.value) vars[col.varName] = matrixCell(mid, col.key)
+  if (batchHostnameUsed.value) vars.hostname = (hostnameMatrix.value[mid] ?? '').trim()
+  return vars
+}
+
+// 从各列第一台的值递增最后一字节（IPv4），填满整列
+function fillIncremental() {
+  const targets = readyTargets.value
+  if (targets.length === 0) return
+  for (const col of matrixColumns.value) {
+    const first = matrixCell(targets[0]!.machine.id, col.key).trim()
+    const m = first.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)(\/\d+)?$/)
+    if (!m) continue
+    const out: string[] = []
+    let ok = true
+    for (let i = 0; i < targets.length; i++) {
+      const o4 = Number(m[4]) + i
+      if (o4 > 254) { ok = false; break }
+      out.push(`${m[1]}.${m[2]}.${m[3]}.${o4}${m[5] ?? ''}`)
+    }
+    if (ok) targets.forEach((t, i) => setMatrixCell(t.machine.id, col.key, out[i]!))
+  }
 }
 
 // 引擎按声明顺序命名 bond（render.BondName：bond0、bond1…，与行位置无关）——
@@ -219,6 +297,116 @@ function bondNameOf(n: NetRow): string {
   }
   return 'bond0'
 }
+
+// ── 静态网卡自动填充：目标机盘查（hardware.nics）作为匹配值下拉数据源 ────────
+// spec.network 为批量目标机共享一份，每个匹配键取各机该键值的交集；
+// 已连接（link_up）的排前面。「+ 添加网卡」按 MAC → 网卡名 → PCI 地址顺序
+// 取第一块未被占用的，MAC 交集为空时自动降级到名称/PCI 匹配。
+interface NicOption { value: string; mac?: string; name?: string; speed_mbps?: number; link_up: boolean }
+
+const nicOptionsByKey = computed<Record<MatchKey, NicOption[]>>(() => {
+  const out: Record<MatchKey, NicOption[]> = { mac: [], name: [], pci_address: [] }
+  const rows = readyTargets.value
+  if (rows.length === 0) return out
+  const lists = rows.map((r) => r.machine.hardware?.nics ?? [])
+  for (const key of MATCH_KEYS) {
+    const seen = new Set<string>()
+    for (const nic of lists[0] ?? []) {
+      const value = nic[key]
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      const everywhere = lists.map((l) => l.find((n) => n[key] === value))
+      if (everywhere.some((m) => !m)) continue
+      out[key].push({
+        value,
+        // 多台机器取值不同时聚合展示，如 MAC 键下各机名称不同 → "eno1/ens1f0"
+        mac: [...new Set(everywhere.map((n) => n!.mac).filter(Boolean))].join('/') || undefined,
+        name: [...new Set(everywhere.map((n) => n!.name))].join('/'),
+        speed_mbps: everywhere[0]!.speed_mbps,
+        link_up: everywhere.every((n) => n!.link_up === true),
+      })
+    }
+    out[key].sort((a, b) => Number(b.link_up) - Number(a.link_up))
+  }
+  return out
+})
+
+// 提示为空的具体原因：一台都没盘查出网卡 vs 多台机器没有共同匹配项
+const anyTargetNics = computed(() =>
+  readyTargets.value.some((r) => (r.machine.hardware?.nics ?? []).length > 0),
+)
+
+const nicInventoryHint = computed<string | null>(() => {
+  if (netMode.value !== 'static') return null
+  if (MATCH_KEYS.some((k) => nicOptionsByKey.value[k].length > 0)) return null
+  return anyTargetNics.value
+    ? '多台目标机的网卡清单没有共同匹配项（MAC/网卡名/PCI 地址交集全空），请手动填写或按机型分批提交。'
+    : '目标机的盘查数据暂无网卡清单（未完成盘查或清单为空），匹配值需手动填写；清单来自注册时的自动盘查，可在机器详情页核对。'
+})
+
+function speedLabel(mbps: number): string {
+  return mbps >= 1000 ? `${mbps / 1000}G` : `${mbps}M`
+}
+
+// 下拉项详情：隐藏正被用作匹配键的字段，展示其余（名称/MAC/速率/Up）
+function nicOptionDetail(key: MatchKey, o: NicOption): string {
+  const parts: string[] = []
+  if (key !== 'name' && o.name) parts.push(o.name)
+  if (key !== 'mac' && o.mac) parts.push(o.mac)
+  if (o.speed_mbps) parts.push(speedLabel(o.speed_mbps))
+  if (o.link_up) parts.push('Up')
+  return parts.join(' · ')
+}
+
+function matchPlaceholder(key: MatchKey): string {
+  return key === 'mac' ? '选择网卡或手填 MAC' : key === 'name' ? '选择网卡或手填网卡名' : '选择网卡或手填 PCI 地址'
+}
+
+function matchByKey(key: MatchKey, value: string): components['schemas']['InterfaceMatch'] {
+  return key === 'mac' ? { mac: value } : key === 'name' ? { name: value } : { pci_address: value }
+}
+
+// 已被其他行（含 bond 成员）占用的「键:值」，避免两行配到同一块网卡
+function usedMatchValues(self?: NetRow): Set<string> {
+  return new Set(
+    nics.value
+      .filter((r) => r !== self)
+      .flatMap((r) =>
+        r.kind === 'nic'
+          ? [`${r.matchKey}:${r.matchValue.trim().toLowerCase()}`]
+          : r.memberValues.map((m) => `${r.memberKey}:${m.trim().toLowerCase()}`),
+      ),
+  )
+}
+
+// 下一行建议网卡：按 MAC → 网卡名 → PCI 地址取第一个未占用项；windows 仅 MAC（方言限 MAC 绑定）
+function suggestedMatch(): { matchKey: MatchKey; matchValue: string } {
+  const used = usedMatchValues()
+  const keys: MatchKey[] = isWindows.value ? ['mac'] : MATCH_KEYS
+  for (const key of keys) {
+    const opt = nicOptionsByKey.value[key].find((o) => !used.has(`${key}:${o.value.toLowerCase()}`))
+    if (opt) return { matchKey: key, matchValue: opt.value }
+  }
+  return { matchKey: 'mac', matchValue: '' }
+}
+
+// 切换匹配方式：当前值仍有效则保留，否则带出新键下第一个未占用项（无则清空）
+function onMatchKeyChange(n: NicRow) {
+  const opts = nicOptionsByKey.value[n.matchKey]
+  if (opts.some((o) => o.value === n.matchValue.trim())) return
+  const used = usedMatchValues(n)
+  n.matchValue = opts.find((o) => !used.has(`${n.matchKey}:${o.value.toLowerCase()}`))?.value ?? ''
+}
+
+function onMemberKeyChange(n: BondRow) {
+  const opts = new Set(nicOptionsByKey.value[n.memberKey].map((o) => o.value))
+  n.memberValues = n.memberValues.map((m) => (opts.has(m.trim()) ? m : ''))
+}
+
+// 切到静态配置时空手起步：自动带出建议网卡（无盘查数据则留空手填）
+watch(netMode, (mode) => {
+  if (mode === 'static' && nics.value.length === 0) addNic()
+})
 
 // ── 脚本（明文输入，提交时自动 UTF-8 base64） ──────────────────────────────
 interface ScriptRow {
@@ -323,19 +511,25 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
     }
   }
 
-  // 网络（静态）：普通网卡 + bond + vlan
+  // 网络（静态）：普通网卡 + bond + vlan。
+  // 批量模式下地址不落模板——以 {var:ip_*} 占位，真实值走 targets[].vars。
   if (netMode.value === 'static') {
+    const colByRow = new Map(matrixColumns.value.map((c) => [c.key, c]))
     const ifaces: components['schemas']['NetworkInterface'][] = []
     for (const n of nics.value) {
-      const addr = n.ip.trim() ? [n.ip.trim()] : undefined
+      const col = colByRow.get(n.key)
+      const addr = isBatchStatic.value
+        ? (col ? [`{var:${col.varName}}`] : undefined)
+        : (n.ip.trim() ? [n.ip.trim()] : undefined)
       const routes = n.gateway.trim() ? [{ to: 'default', via: n.gateway.trim() }] : undefined
       const dnsList = n.dns.split(/[ ,]+/).filter(Boolean)
       const nameservers = dnsList.length > 0 ? { addresses: dnsList } : undefined
       if (n.kind === 'nic') {
-        if (!n.mac.trim()) continue
-        ifaces.push({ match: { mac: n.mac.trim() }, addresses: addr, routes, nameservers })
+        const v = n.matchValue.trim()
+        if (!v) continue
+        ifaces.push({ match: matchByKey(n.matchKey, v), addresses: addr, routes, nameservers })
       } else {
-        const members = n.memberMacs.map((m) => m.trim()).filter(Boolean)
+        const members = n.memberValues.map((m) => m.trim()).filter(Boolean)
         if (members.length === 0 && !addr) continue
         let params: Record<string, unknown> | undefined
         if (n.miimon.trim()) params = { ...params, miimon: Number(n.miimon) }
@@ -347,7 +541,7 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
           }
         }
         ifaces.push({
-          bond: { interfaces: members.map((m) => ({ match: { mac: m } })), mode: n.mode, params },
+          bond: { interfaces: members.map((m) => ({ match: matchByKey(n.memberKey, m) })), mode: n.mode, params },
           addresses: addr,
           routes,
           nameservers,
@@ -355,8 +549,14 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
       }
     }
     for (const v of vlans.value) {
-      if (!v.id.trim() || !v.ip.trim()) continue
-      ifaces.push({ vlan: { id: Number(v.id), link: v.link.trim() || 'bond0' }, addresses: [v.ip.trim()] })
+      const col = colByRow.get(v.key)
+      if (isBatchStatic.value) {
+        if (!v.id.trim() || !col) continue
+        ifaces.push({ vlan: { id: Number(v.id), link: v.link.trim() || 'bond0' }, addresses: [`{var:${col.varName}}`] })
+      } else {
+        if (!v.id.trim() || !v.ip.trim()) continue
+        ifaces.push({ vlan: { id: Number(v.id), link: v.link.trim() || 'bond0' }, addresses: [v.ip.trim()] })
+      }
     }
     if (ifaces.length > 0) out.network = ifaces
   }
@@ -371,7 +571,11 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
     }))
   if (scriptSpecs.length > 0) out.scripts = scriptSpecs
 
-  if (hostnamePattern.value.trim()) out.identity = { hostname_pattern: hostnamePattern.value.trim() }
+  if (isBatchStatic.value && batchHostnameUsed.value) {
+    out.identity = { hostname_pattern: '{var:hostname}' } // 逐台显式名（矩阵主机名列）
+  } else if (hostnamePattern.value.trim()) {
+    out.identity = { hostname_pattern: hostnamePattern.value.trim() }
+  }
   const keys = sshKeys.value.map((k) => k.trim()).filter(Boolean)
   const wantPassword = rootMode.value === 'manual' && rootPassword.value
   if (wantPassword || keys.length > 0 || (isWindows.value && winCaps.value.length > 0)) {
@@ -430,29 +634,76 @@ function validateStep2(): string | null {
     }
   }
   if (netMode.value === 'static') {
-    for (const [i, n] of nics.value.entries()) {
-      if (n.kind === 'nic') {
-        if ((n.mac.trim() && !n.ip.trim()) || (!n.mac.trim() && n.ip.trim())) {
-          return `第 ${i + 1} 块网卡的 MAC 与 IP 需要成对填写`
-        }
-      } else {
-        const members = n.memberMacs.filter((m) => m.trim())
-        if (members.length > 0 && members.length !== n.memberMacs.length) {
-          return `bond "${bondNameOf(n)}" 有未填的成员 MAC`
-        }
-        if (n.ip.trim() && members.length === 0) {
-          return `bond "${bondNameOf(n)}" 需要至少一个成员 MAC`
-        }
-        if (n.paramsRaw.trim()) {
-          try { JSON.parse(n.paramsRaw) } catch {
-            return `bond "${bondNameOf(n)}" 的高级参数不是合法 JSON`
+    if (isBatchStatic.value) {
+      // 批量静态：行定义「匹配 + 共享网关/DNS」，地址逐台进矩阵，缺一格即拦
+      for (const [i, n] of nics.value.entries()) {
+        if (n.kind === 'nic') {
+          if (!n.matchValue.trim()) {
+            return `第 ${i + 1} 块网卡：请选择匹配值（IP 在下方逐台表格填写）`
+          }
+          if (isWindows.value && n.matchKey !== 'mac') {
+            return 'Windows 方言静态网络仅支持 MAC 绑定'
+          }
+        } else {
+          const members = n.memberValues.filter((m) => m.trim())
+          if (members.length > 0 && members.length !== n.memberValues.length) {
+            return `bond "${bondNameOf(n)}" 有未填的成员匹配值`
+          }
+          if (members.length === 0) {
+            return `bond "${bondNameOf(n)}" 需要至少一个成员网卡`
+          }
+          if (n.paramsRaw.trim()) {
+            try { JSON.parse(n.paramsRaw) } catch {
+              return `bond "${bondNameOf(n)}" 的高级参数不是合法 JSON`
+            }
           }
         }
       }
-    }
-    for (const [i, v] of vlans.value.entries()) {
-      if ((v.id.trim() && !v.ip.trim()) || (!v.id.trim() && v.ip.trim())) {
-        return `第 ${i + 1} 条 VLAN 的 VLAN ID 与 IP 需要成对填写`
+      for (const [i, v] of vlans.value.entries()) {
+        if (!v.id.trim()) {
+          return `第 ${i + 1} 条 VLAN：请填写 VLAN ID（IP 在下方逐台表格填写）`
+        }
+      }
+      for (const col of matrixColumns.value) {
+        for (const r of readyTargets.value) {
+          if (!matrixCell(r.machine.id, col.key).trim()) {
+            return `「${col.label}」列：${r.machine.id} 还没填 IP/位`
+          }
+        }
+      }
+      const hostFilled = readyTargets.value.filter((r) => (hostnameMatrix.value[r.machine.id] ?? '').trim()).length
+      if (hostFilled > 0 && hostFilled < readyTargets.value.length) {
+        return '主机名列要么每台都填（逐台显式名），要么全部留空（用主机名模式生成）'
+      }
+    } else {
+      for (const [i, n] of nics.value.entries()) {
+        if (n.kind === 'nic') {
+          const v = n.matchValue.trim()
+          if ((v && !n.ip.trim()) || (!v && n.ip.trim())) {
+            return `第 ${i + 1} 块网卡的匹配值与 IP 需要成对填写`
+          }
+          if (v && isWindows.value && n.matchKey !== 'mac') {
+            return 'Windows 方言静态网络仅支持 MAC 绑定'
+          }
+        } else {
+          const members = n.memberValues.filter((m) => m.trim())
+          if (members.length > 0 && members.length !== n.memberValues.length) {
+            return `bond "${bondNameOf(n)}" 有未填的成员匹配值`
+          }
+          if (n.ip.trim() && members.length === 0) {
+            return `bond "${bondNameOf(n)}" 需要至少一个成员网卡`
+          }
+          if (n.paramsRaw.trim()) {
+            try { JSON.parse(n.paramsRaw) } catch {
+              return `bond "${bondNameOf(n)}" 的高级参数不是合法 JSON`
+            }
+          }
+        }
+      }
+      for (const [i, v] of vlans.value.entries()) {
+        if ((v.id.trim() && !v.ip.trim()) || (!v.id.trim() && v.ip.trim())) {
+          return `第 ${i + 1} 条 VLAN 的 VLAN ID 与 IP 需要成对填写`
+        }
       }
     }
   }
@@ -512,7 +763,11 @@ async function runPlans() {
         const plan = await unwrap(
           await getClient().POST('/api/v1/machines/{id}/install-plan', {
             params: { path: { id: row.machine.id } },
-            body: buildSpec({ forPlan: true }) as never,
+            // 模板 + 该台 vars：替换与解析后校验都在引擎侧同一条管线完成
+            body: {
+              spec: buildSpec({ forPlan: true }) as never,
+              vars: (machineVars(row.machine.id) ?? {}) as never,
+            },
           }),
         )
         planResults.value.push({ machineId: row.machine.id, ok: true, plan })
@@ -543,7 +798,12 @@ async function submit() {
       params: { header: { 'Idempotency-Key': uuid() } },
       body: {
         type: 'install',
-        targets: { machine_ids: readyTargets.value.map((r) => r.machine.id as never) },
+        targets: {
+          targets: readyTargets.value.map((r) => {
+            const vars = machineVars(r.machine.id)
+            return { machine_id: r.machine.id as never, ...(vars ? { vars: vars as never } : {}) }
+          }),
+        },
         spec: buildSpec() as never,
         policy: {
           concurrency: policy.concurrency,
@@ -748,8 +1008,28 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               <template v-if="n.kind === 'nic'">
                 <div class="repo-row">
                   <el-tag size="small" effect="plain" class="kind-tag">网卡</el-tag>
-                  <el-input v-model="n.mac" placeholder="网卡 MAC" class="mono" style="width: 190px" />
-                  <el-input v-model="n.ip" placeholder="IP/位，如 198.51.100.5/24" class="mono" style="width: 180px" />
+                  <el-select v-model="n.matchKey" style="width: 110px" :disabled="isWindows" @change="onMatchKeyChange(n)">
+                    <el-option v-for="k in MATCH_KEYS" :key="k" :value="k" :label="MATCH_KEY_LABEL[k]" />
+                  </el-select>
+                  <el-select
+                    v-model="n.matchValue"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    :placeholder="matchPlaceholder(n.matchKey)"
+                    class="mono"
+                    style="width: 260px"
+                  >
+                    <el-option v-for="o in nicOptionsByKey[n.matchKey]" :key="o.value" :value="o.value" :label="o.value">
+                      <span style="display: inline-flex; align-items: center; gap: 8px">
+                        <span class="mono">{{ o.value }}</span>
+                        <span class="text-muted" style="font-size: 12px">{{ nicOptionDetail(n.matchKey, o) }}</span>
+                      </span>
+                    </el-option>
+                  </el-select>
+                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="IP/位，如 198.51.100.5/24" class="mono" style="width: 180px" />
+                  <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
                   <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 160px" />
                   <el-input v-model="n.dns" placeholder="DNS，逗号分隔（可选）" class="mono" style="width: 180px" />
                   <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />
@@ -765,17 +1045,40 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                   <el-select v-model="n.mode" style="width: 170px">
                     <el-option v-for="m in BOND_MODES" :key="m" :value="m" :label="m" />
                   </el-select>
-                  <el-input v-model="n.ip" placeholder="IP/位（可选）" class="mono" style="width: 180px" />
+                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="IP/位（可选）" class="mono" style="width: 180px" />
+                  <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
                   <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 150px" />
                   <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />
                 </div>
                 <div class="bond-members">
-                  <div class="text-muted" style="font-size: 12px; width: 100%">成员网卡 MAC（按 miimon 链路监测）；高级参数也接受 cloud-init v2 拼写（如 {"mii-monitor-interval":100}），未知键会被引擎渲染期拒绝：</div>
-                  <div v-for="(_m, mi) in n.memberMacs" :key="mi" class="repo-row">
-                    <el-input v-model="n.memberMacs[mi]" placeholder="成员网卡 MAC" class="mono" style="width: 240px" />
-                    <el-button type="danger" plain size="small" :icon="Delete" @click="n.memberMacs.splice(mi, 1)" />
+                  <div class="repo-row">
+                    <span class="text-muted" style="font-size: 12px">成员匹配方式</span>
+                    <el-select v-model="n.memberKey" style="width: 110px" :disabled="isWindows" @change="onMemberKeyChange(n)">
+                      <el-option v-for="k in MATCH_KEYS" :key="k" :value="k" :label="MATCH_KEY_LABEL[k]" />
+                    </el-select>
+                    <span class="text-muted" style="font-size: 12px">按 miimon 链路监测；高级参数也接受 cloud-init v2 拼写（如 {"mii-monitor-interval":100}），未知键会被引擎渲染期拒绝</span>
                   </div>
-                  <el-button size="small" @click="n.memberMacs.push('')">+ 成员</el-button>
+                  <div v-for="(_m, mi) in n.memberValues" :key="mi" class="repo-row">
+                    <el-select
+                      v-model="n.memberValues[mi]"
+                      filterable
+                      allow-create
+                      default-first-option
+                      clearable
+                      :placeholder="matchPlaceholder(n.memberKey)"
+                      class="mono"
+                      style="width: 300px"
+                    >
+                      <el-option v-for="o in nicOptionsByKey[n.memberKey]" :key="o.value" :value="o.value" :label="o.value">
+                        <span style="display: inline-flex; align-items: center; gap: 8px">
+                          <span class="mono">{{ o.value }}</span>
+                          <span class="text-muted" style="font-size: 12px">{{ nicOptionDetail(n.memberKey, o) }}</span>
+                        </span>
+                      </el-option>
+                    </el-select>
+                    <el-button type="danger" plain size="small" :icon="Delete" @click="n.memberValues.splice(mi, 1)" />
+                  </div>
+                  <el-button size="small" @click="n.memberValues.push('')">+ 成员</el-button>
                   <el-input v-model="n.miimon" placeholder="miimon(ms)" class="mono" style="width: 130px" />
                   <el-input v-model="n.paramsRaw" placeholder='高级参数 JSON，如 {"lacp_rate":"fast"}' class="mono" style="width: 320px" />
                 </div>
@@ -786,6 +1089,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               <el-button size="small" :disabled="!bondSupported || isWindows" @click="addBond">+ 添加 bond</el-button>
               <el-button size="small" :disabled="!bondSupported || isWindows" @click="addVlan">+ 添加 VLAN</el-button>
             </div>
+            <div v-if="nicInventoryHint" class="hint" style="color: #e6a23c">{{ nicInventoryHint }}</div>
             <div v-if="!bondSupported" class="hint" style="color: #e6a23c">
               Debian 方言不支持 bond/VLAN（引擎渲染即拒）；如需 bond 请改用 Rocky/Ubuntu 系列。
             </div>
@@ -798,8 +1102,51 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 <el-tag size="small" type="warning" effect="plain" class="kind-tag">VLAN</el-tag>
                 <el-input v-model="v.id" placeholder="VLAN ID" class="mono" style="width: 110px" />
                 <el-input v-model="v.link" placeholder="挂在哪个接口（bond0）" class="mono" style="width: 200px" />
-                <el-input v-model="v.ip" placeholder="IP/位" class="mono" style="width: 180px" />
+                <el-input v-if="!isBatchStatic" v-model="v.ip" placeholder="IP/位" class="mono" style="width: 180px" />
+                <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
                 <el-button type="danger" plain :icon="Delete" @click="vlans.splice(i, 1)" />
+              </div>
+            </template>
+            <template v-if="isBatchStatic">
+              <div class="text-muted" style="font-size: 12px; margin-top: 12px">
+                逐台地址分配（每台每个接口一格，引擎按台解析；上方行的网关/DNS 批量共享）：
+              </div>
+              <el-table :data="readyTargets" size="small" class="matrix-table">
+                <el-table-column label="机器" min-width="150">
+                  <template #default="{ row }">
+                    <span class="mono" style="font-size: 12px">{{ row.machine.id }}</span>
+                    <div class="text-muted mono" style="font-size: 11px">{{ row.machine.bmc.address }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column v-for="col in matrixColumns" :key="col.key" :label="col.label" min-width="170">
+                  <template #default="{ row }">
+                    <el-input
+                      :model-value="matrixCell(row.machine.id, col.key)"
+                      placeholder="IP/位，如 10.0.0.11/24"
+                      class="mono"
+                      size="small"
+                      @update:model-value="setMatrixCell(row.machine.id, col.key, $event)"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="主机名（可选）" min-width="150">
+                  <template #default="{ row }">
+                    <el-input
+                      :model-value="hostnameMatrix[row.machine.id] ?? ''"
+                      placeholder="node-01"
+                      class="mono"
+                      size="small"
+                      @update:model-value="hostnameMatrix[row.machine.id] = $event"
+                    />
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px">
+                <el-button size="small" @click="fillIncremental">按各列首行递增填充</el-button>
+                <span class="text-muted" style="font-size: 12px">取每列第一台的值，最后一字节逐台 +1（仅 IPv4）。</span>
+              </div>
+              <div v-if="matrixColumns.length === 0" class="hint" style="color: #e6a23c">
+                还没有可分配的接口列：网卡需选定匹配值、bond 需要成员、VLAN 需要 ID。
               </div>
             </template>
           </div>
@@ -807,10 +1154,16 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         </el-form-item>
 
         <el-form-item label="主机名">
-          <el-input v-model="hostnamePattern" placeholder="如 node-{index} → node-1、node-2…" style="width: 320px" />
+          <el-input
+            v-model="hostnamePattern"
+            :disabled="isBatchStatic && batchHostnameUsed"
+            placeholder="如 node-{index} → node-1、node-2…"
+            style="width: 320px"
+          />
           <div class="hint">
+            <template v-if="isBatchStatic && batchHostnameUsed">已在下方逐台表格使用显式主机名（此模式被接管）。</template>
             仅支持 {index} 变量：按上方勾选顺序替换为 1、2、3…（1 起）。不含 {index} 时所有机器同名（不推荐）。
-            逐台固定名暂不支持——引擎的提交接口可按机器单独覆盖，向导会在后续版本提供 CSV 导入。
+            逐台固定名可在静态网络的逐台表格里填「主机名」列。
           </div>
         </el-form-item>
 
@@ -1091,6 +1444,10 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 .net-add {
   display: flex;
   gap: 6px;
+}
+.matrix-table {
+  width: 100%;
+  margin-top: 6px;
 }
 .kind-tag {
   flex-shrink: 0;

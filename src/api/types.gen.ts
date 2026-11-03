@@ -1632,8 +1632,18 @@ export interface components {
             capabilities?: ("rdp" | "winrm" | "ping")[];
         };
         IdentitySpec: {
-            /** @example node-{index} */
+            /**
+             * @description Per-machine hostname template, expanded at submission per target (docs/04-install-spec.md §5.0). Supports `{index}` (1-based position in targets), the built-in context variables (`{machine_id}`, `{serial}`, `{bmc_address}`, `{label:key}`) and binding references (`{var:name}`); an explicit per-machine hostname is expressed as a binding, not a precedence rule.
+             * @example node-{index}
+             */
             hostname_pattern?: string;
+        };
+        InstallPlanRequest: {
+            spec: components["schemas"]["InstallSpec"];
+            /** @description The target machine's variable bindings (`targets[].vars` shape); substitution and post-substitution validation run exactly as in a real submission, so a plan that resolves here installs there. */
+            vars?: {
+                [key: string]: string;
+            };
         };
         ScriptSpec: {
             /** @enum {string} */
@@ -1683,6 +1693,7 @@ export interface components {
             grow?: boolean;
             flags?: string[];
         };
+        /** @description Install intent template (docs/04-install-spec.md §5). Any string value may carry template references — `{var:name}` (resolved from the target's `targets[].vars`), `{index}`, `{machine_id}`, `{serial}`, `{bmc_address}`, `{label:key}` — expanded per machine at submission; unrecognized `{...}` sequences stay literal, so shell `${...}` and JSON snippets pass through untouched. base64 script bodies are opaque and never templated. Resolution runs at submission per machine; a missing binding rejects the whole request (422 SCHEMA_UNRESOLVED_VAR), a malformed address after substitution rejects with SCHEMA_INVALID_ADDRESS. */
         InstallSpec: {
             image: {
                 /**
@@ -1807,11 +1818,16 @@ export interface components {
             canceled?: number;
         };
         JobTargets: {
-            machine_ids: components["schemas"]["MachineId"][];
-            /** @description Per-machine Install Spec fragments, shallow-merged over `spec`. */
-            overrides?: {
-                [key: string]: components["schemas"]["InstallSpec"];
+            targets: components["schemas"]["JobTarget"][];
+        };
+        JobTarget: {
+            machine_id: components["schemas"]["MachineId"];
+            /** @description Per-machine values referenced from the spec template via `{var:name}` (docs/04-install-spec.md §5.0). Values are plain strings — addresses, hostnames, gateways all ride the same channel. Unresolved references reject the whole submission (422 SCHEMA_UNRESOLVED_VAR, naming machine + variable); install jobs only. */
+            vars?: {
+                [key: string]: string;
             };
+            /** @description RFC 7386 JSON Merge Patch applied over `spec` for THIS machine before variable substitution — deep merge, `null` deletes a key. For structural divergence only (a different disk layout on one machine); value-level divergence (IP/hostname) belongs in `vars`. Install jobs only. */
+            spec_patch?: components["schemas"]["InstallSpec"];
         };
         JobCreate: {
             type: components["schemas"]["JobType"];
@@ -2446,7 +2462,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["InstallSpec"];
+                "application/json": components["schemas"]["InstallPlanRequest"];
             };
         };
         responses: {
