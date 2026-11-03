@@ -1979,8 +1979,11 @@ export interface components {
              * @description Cached file size; set when ready.
              */
             size_bytes?: number;
-            /** @enum {string} */
-            state: "fetching" | "ready" | "failed";
+            /**
+             * @description `missing` — the ready file was removed from the media images directory out of band; the directory scanner flags it and restores the row automatically when the file returns.
+             * @enum {string}
+             */
+            state: "fetching" | "ready" | "failed" | "missing";
             /** @description Failure reason when failed (checksum mismatch, unreachable source). */
             error?: string;
             created_at: components["schemas"]["Timestamp"];

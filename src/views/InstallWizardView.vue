@@ -1256,6 +1256,9 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div v-if="spec.boot?.strategy === 'pxe' && !conn.capabilities?.netboot_enabled" class="hint" style="color: #e6a23c">
             引擎未启用 netboot，PXE 提交会被拒绝。
           </div>
+          <div v-else-if="spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="hint">
+            Rocky9 系介质的 vMedia 是引导型 CD（介质上无安装包）：安装源需为 nfs:// 或 http(s) 树 URL——镜像库引用（image.id）建议搭配 PXE 使用。
+          </div>
         </el-form-item>
 
         <el-form-item v-if="isWindows" label="安装通路（windows 专用）">

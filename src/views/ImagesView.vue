@@ -11,12 +11,16 @@ import { formatBytes, formatTime } from '@/utils/format'
 type Image = components['schemas']['Image']
 
 // 镜像有后台拉取（fetching→ready/failed），有 fetching 行时 3s 轮询跟进；
+// missing（缓存文件被移出媒体目录）由引擎扫描器自动恢复（周期 60s），15s 轮询跟进；
 // 列表无分页（契约：newest first 全量返回）
 const query = useQuery({
   queryKey: ['images'],
   queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
-  refetchInterval: (q) =>
-    (q.state.data?.items ?? []).some((i) => i.state === 'fetching') ? 3000 : false,
+  refetchInterval: (q) => {
+    const items = q.state.data?.items ?? []
+    if (items.some((i) => i.state === 'fetching')) return 3000
+    return items.some((i) => i.state === 'missing') ? 15000 : false
+  },
 })
 
 const rows = computed(() => query.data.value?.items ?? [])
@@ -79,10 +83,11 @@ async function remove(img: Image) {
   }
 }
 
-const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 'danger' }> = {
+const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 'danger' | 'warning' }> = {
   fetching: { label: '拉取中', type: 'primary' },
   ready: { label: '就绪', type: 'success' },
   failed: { label: '失败', type: 'danger' },
+  missing: { label: '文件缺失', type: 'warning' },
 }
 </script>
 
@@ -96,13 +101,12 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
       </div>
     </div>
 
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      class="mb"
-      title="SHA256 是门禁不是元数据：拉取时边流边校验，不符即弃、不落缓存；相同摘要的镜像共享同一份缓存文件。"
-    />
+    <el-alert type="info" :closable="false" show-icon class="mb">
+      <template #title>
+        SHA256 是门禁不是元数据：拉取时边流边校验，不符即弃、不落缓存；相同摘要的镜像共享同一份缓存文件。
+      </template>
+      把 ISO 直接拷进引擎媒体目录的 images/ 子目录也可以——目录扫描器每分钟自动导入（含 distro/version 识别），无需注册。
+    </el-alert>
 
     <el-card shadow="never">
       <el-table v-loading="query.isFetching.value" :data="rows" size="default">
@@ -121,11 +125,19 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
             <span v-if="row.distro || row.version" class="mono">
               {{ [row.distro, row.version].filter(Boolean).join(' ') }}
             </span>
-            <span v-else class="text-muted" title="引擎识别后将自动展示">识别中</span>
+            <span v-else-if="row.state === 'fetching'" class="text-muted" title="引擎识别后将自动展示">识别中</span>
+            <span v-else class="text-muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="来源地址" min-width="240">
-          <template #default="{ row }"><span class="mono url">{{ row.source_url }}</span></template>
+        <el-table-column label="来源" min-width="240">
+          <template #default="{ row }">
+            <span
+              v-if="row.source_url?.startsWith('dir://')"
+              class="text-muted"
+              :title="`引擎从媒体目录自动导入：${row.source_url.slice('dir://'.length)}`"
+            >媒体目录（自动导入）</span>
+            <span v-else class="mono url">{{ row.source_url }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="SHA256" min-width="200">
           <template #default="{ row }">
@@ -148,16 +160,27 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
             <div class="text-muted" style="font-size: 13px; max-width: 460px; line-height: 1.7">
               注册一个 http(s) 镜像地址与其 SHA256，引擎会在后台拉取并校验——
               装机时直接从库里选择，不必再手工粘贴校验和。
+              也可以把 ISO 直接拷进引擎媒体目录的 images/ 子目录，每分钟自动扫描导入。
             </div>
           </el-empty>
         </template>
       </el-table>
       <el-alert
         v-for="(img, i) in rows.filter((r) => r.state === 'failed')"
-        :key="i"
+        :key="'failed-' + i"
         :title="`拉取失败：${img.name || img.source_url}`"
         :description="img.error"
         type="error"
+        :closable="false"
+        show-icon
+        class="mt"
+      />
+      <el-alert
+        v-for="(img, i) in rows.filter((r) => r.state === 'missing')"
+        :key="'missing-' + i"
+        :title="`文件缺失：${img.name || img.sha256.slice(0, 12)}`"
+        description="缓存文件被移出了媒体目录。把文件放回（换成任意文件名的同一副本亦可），引擎会在下个扫描周期自动恢复为就绪，无需重新注册。"
+        type="warning"
         :closable="false"
         show-icon
         class="mt"
