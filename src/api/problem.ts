@@ -40,7 +40,10 @@ export class ConsoleApiError extends Error {
   constructor(problem: Partial<Problem>, status: number) {
     const code = typeof problem.code === 'string' ? problem.code : undefined
     const detail = typeof problem.detail === 'string' ? problem.detail : undefined
-    super(CODE_MESSAGES[code ?? ''] ?? detail ?? problem.title ?? `请求失败（${status}）`)
+    const mapped = CODE_MESSAGES[code ?? '']
+    // 映射文案是入口指引，引擎 detail 是精确归因（哪个字段哪个值）——
+    // 拼接而非替换，避免吞掉可操作的错误细节（如具体哪个地址缺掩码）。
+    super(mapped && detail ? `${mapped}（${detail}）` : mapped ?? detail ?? problem.title ?? `请求失败（${status}）`)
     this.name = 'ConsoleApiError'
     this.code = code
     this.status = status
