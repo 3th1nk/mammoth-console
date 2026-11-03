@@ -1028,7 +1028,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       </span>
                     </el-option>
                   </el-select>
-                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="IP/位，如 198.51.100.5/24" class="mono" style="width: 180px" />
+                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式，如 198.51.100.5/24" class="mono" style="width: 180px" />
                   <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
                   <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 160px" />
                   <el-input v-model="n.dns" placeholder="DNS，逗号分隔（可选）" class="mono" style="width: 180px" />
@@ -1045,7 +1045,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                   <el-select v-model="n.mode" style="width: 170px">
                     <el-option v-for="m in BOND_MODES" :key="m" :value="m" :label="m" />
                   </el-select>
-                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="IP/位（可选）" class="mono" style="width: 180px" />
+                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式（可选）" class="mono" style="width: 180px" />
                   <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
                   <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 150px" />
                   <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />
@@ -1102,7 +1102,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 <el-tag size="small" type="warning" effect="plain" class="kind-tag">VLAN</el-tag>
                 <el-input v-model="v.id" placeholder="VLAN ID" class="mono" style="width: 110px" />
                 <el-input v-model="v.link" placeholder="挂在哪个接口（bond0）" class="mono" style="width: 200px" />
-                <el-input v-if="!isBatchStatic" v-model="v.ip" placeholder="IP/位" class="mono" style="width: 180px" />
+                <el-input v-if="!isBatchStatic" v-model="v.ip" placeholder="CIDR 格式" class="mono" style="width: 180px" />
                 <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
                 <el-button type="danger" plain :icon="Delete" @click="vlans.splice(i, 1)" />
               </div>
@@ -1122,7 +1122,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                   <template #default="{ row }">
                     <el-input
                       :model-value="matrixCell(row.machine.id, col.key)"
-                      placeholder="IP/位，如 10.0.0.11/24"
+                      placeholder="CIDR，如 10.0.0.11/24"
                       class="mono"
                       size="small"
                       @update:model-value="setMatrixCell(row.machine.id, col.key, $event)"
@@ -1162,7 +1162,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           />
           <div class="hint">
             <template v-if="isBatchStatic && batchHostnameUsed">已在下方逐台表格使用显式主机名（此模式被接管）。</template>
-            仅支持 {index} 变量：按上方勾选顺序替换为 1、2、3…（1 起）。不含 {index} 时所有机器同名（不推荐）。
+            支持变量：{index}（按勾选顺序 1、2、3…）、{machine_id}、{serial}、{bmc_address}、{label:key}（取机器标签）；不含变量时所有机器同名（不推荐）。
             逐台固定名可在静态网络的逐台表格里填「主机名」列。
           </div>
         </el-form-item>
