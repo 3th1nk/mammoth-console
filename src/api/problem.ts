@@ -54,12 +54,34 @@ export class ConsoleApiError extends Error {
 
 type UnwrapResult<T> = { data?: T; error?: unknown; response: Response }
 
+/** 无 problem 体的失败（网关 502 空响应、非 JSON 错误页）→ 按状态给可读文案。 */
+const STATUS_MESSAGES: Record<number, string> = {
+  401: '未授权：连接令牌无效或已过期，请重新连接',
+  429: '请求过于频繁：请稍后重试',
+  502: '无法连接引擎：引擎未运行或反向代理不可达',
+  503: '引擎暂不可用：重启中或过载',
+  504: '引擎响应超时：请求处理过久',
+}
+
 /** openapi-fetch 结果 → 数据或抛出 ConsoleApiError（204 之类无体的成功返回 undefined）。 */
 export function unwrap<T>(result: UnwrapResult<T>): Promise<T> {
   if (result.error !== undefined && result.error !== null) {
-    const raw = result.error as Partial<Problem>
+    // 非 JSON 错误体（HTML 错误页等）被 openapi-fetch 解析成裸文本——按状态映射文案。
+    const raw =
+      typeof result.error === 'string'
+        ? { title: STATUS_MESSAGES[result.response?.status ?? 0] }
+        : (result.error as Partial<Problem>)
     return Promise.reject(
       new ConsoleApiError(raw, result.response?.status ?? 0),
+    )
+  }
+  // 非 2xx 但错误体缺失（openapi-fetch 对空 body 错误响应返回 error:undefined，
+  // 如 Caddy 反代引擎挂掉时的 502 空 body）不能当成功把 undefined 发给调用方
+  // ——TanStack Query 会直接抛裸 "data is undefined"（2026-11-03 引擎 panic，
+  // 全 API 502 空响应，任务详情页炸出无意义报错）。按状态拒绝。
+  if (result.data === undefined && result.response && !result.response.ok) {
+    return Promise.reject(
+      new ConsoleApiError({ title: STATUS_MESSAGES[result.response.status] }, result.response.status),
     )
   }
   return Promise.resolve(result.data as T)
