@@ -74,7 +74,9 @@ const bootDefault = computed(() => conn.capabilities?.boot_strategy_default ?? '
 
 const spec = reactive<InstallSpec>({
   image: { distro: '' },
-  boot: { strategy: bootDefault.value, installer: 'auto' },
+  // evidence_wait_seconds:0 = 引擎缺省(10m 等待窗)——生成器把带 default 的
+  // 字段标成必填(openapi-typescript 已知坑,docs/03 §199),显式给缺省值。
+  boot: { strategy: bootDefault.value, installer: 'auto', evidence_wait_seconds: 0 },
 })
 
 const distroChoice = computed({
@@ -85,10 +87,8 @@ const distroChoice = computed({
 })
 
 const isWindows = computed(() => spec.image.distro.toLowerCase().includes('win'))
-const isDebian = computed(() => {
-  const d = distros.value.find((x) => x.name === spec.image.distro)
-  return d?.family === 'preseed'
-})
+const distroFamily = computed(() => distros.value.find((x) => x.name === spec.image.distro)?.family)
+const isDebian = computed(() => distroFamily.value === 'preseed')
 
 // windows 选中/取消时收敛启动策略：UEFI-only 且 agent 通路 PXE-only
 watch(isWindows, (win) => {
@@ -143,8 +143,8 @@ function addSshKey() {
 const winCaps = ref<string[]>([])
 
 
-// ── 存储：预设 / 逐盘图形化布局 ────────────────────────────────────────────
-const storageMode = ref<'preset' | 'custom'>('preset')
+// ── 存储：标准分区 / 自定义分区 / LVM 卷组（三档同轴：按产出布局形态命名） ──
+const storageMode = ref<'standard' | 'custom' | 'lvm'>('standard')
 type SelectorKind = 'largest' | 'smallest' | 'ssd' | 'hdd' | 'nvme'
 interface PartitionRow { size: string; fs: string; mount: string }
 interface DiskRow {
@@ -179,6 +179,43 @@ function addDisk() {
 }
 function addPartition(d: DiskRow) {
   d.partitions.push({ size: '100G', fs: 'xfs', mount: '' })
+}
+
+// LVM 卷组（storage.lvm，docs/04 §5.1.1）：本档自带固定引导盘声明（最大盘
+// ESP + kickstart 族 /boot），根分区建在卷组逻辑卷上。PV 整盘消费，与磁盘
+// 声明互斥；保留模式(keep:vg)整组采用既有卷组，只声明挂载意图。
+// PV 不提供「最大盘」选项——引导盘已占；debian(partman)连 PV 行都没有
+// （单目标 = 最大盘，buildSpec 自动接线）。
+const PV_SELECTOR_OPTIONS = (Object.keys(SELECTOR_LABEL) as SelectorKind[]).filter((k) => k !== 'largest')
+interface LvRow { name: string; size: string; fs: string; mount: string }
+interface PreserveRow { name: string; mount: string; fs: string }
+interface VgRow {
+  name: string
+  mode: 'fresh' | 'keep'
+  pvs: { selector: SelectorKind }[]
+  logvols: LvRow[]
+  preserve: PreserveRow[]
+}
+
+const vgs = ref<VgRow[]>([])
+
+function addVg() {
+  vgs.value.push({
+    name: '',
+    mode: 'fresh',
+    pvs: [{ selector: 'smallest' }],
+    logvols: [{ name: 'root', size: 'rest', fs: 'xfs', mount: '/' }],
+    preserve: [],
+  })
+}
+function addPv(g: VgRow) {
+  g.pvs.push({ selector: 'smallest' })
+}
+function addLv(g: VgRow) {
+  g.logvols.push({ name: '', size: '100G', fs: 'xfs', mount: '' })
+}
+function addPreserve(g: VgRow) {
+  g.preserve.push({ name: '', mount: '', fs: '' })
 }
 
 // ── 网络：默认静态（网卡 + bond + vlan） / 自动（装机环境 DHCP） ─────────────
@@ -486,7 +523,7 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
       alignment: '4k',
       disks: [{ select: { match: { size: 'largest' } }, wipe: true }],
     }
-  } else if (storageMode.value === 'preset') {
+  } else if (storageMode.value === 'standard') {
     out.storage = {
       alignment: '4k',
       disks: [
@@ -500,6 +537,52 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
           ],
         },
       ],
+    }
+  } else if (storageMode.value === 'lvm') {
+    // LVM 卷组档:引导盘固定声明——kickstart 族 ESP + /boot(anaconda 无法从
+    // LVM 引导),其余方言仅 ESP(grub2 可读 LVM)。family 未知按 kickstart
+    // 兜底:/boot 多声明无害。
+    const bootPartitions: { size: string; fs: 'vfat' | 'xfs'; mount: string; flags?: string[] }[] =
+      (distroFamily.value ?? 'kickstart') === 'kickstart'
+        ? [
+            { size: '512M', fs: 'vfat', mount: '/boot/efi', flags: ['esp'] },
+            { size: '1G', fs: 'xfs', mount: '/boot' },
+          ]
+        : [{ size: '512M', fs: 'vfat', mount: '/boot/efi', flags: ['esp'] }]
+    const lvmStorage: components['schemas']['StorageSpec'] = {
+      alignment: '4k',
+      disks: [{ select: { match: { size: 'largest' } }, wipe: true, partitions: bootPartitions }],
+    }
+    out.storage = lvmStorage
+    if (vgs.value.length > 0) {
+      const toMatch = (s: SelectorKind) =>
+        s === 'largest' || s === 'smallest' ? { size: s } : { type: s }
+      lvmStorage.lvm = vgs.value.map((g) => {
+        if (g.mode === 'keep') {
+          return {
+            name: g.name.trim(),
+            keep: 'vg' as const,
+            preserve: g.preserve.map((p) => ({
+              name: p.name.trim(),
+              mount: p.mount.trim(),
+              ...(p.fs ? { fs: p.fs as 'vfat' | 'xfs' | 'ext4' | 'swap' } : {}),
+            })),
+          }
+        }
+        return {
+          name: g.name.trim(),
+          // debian(partman)单目标 = 最大盘,PV 自动接线(表单无 PV 行)
+          pvs: isDebian.value
+            ? [{ match: { size: 'largest' } }]
+            : g.pvs.map((p) => ({ match: toMatch(p.selector) })),
+          logvols: g.logvols.map((l) => ({
+            name: l.name.trim(),
+            size: l.size.trim(),
+            fs: l.fs as 'vfat' | 'xfs' | 'ext4' | 'swap',
+            mount: l.mount.trim() || undefined,
+          })),
+        }
+      })
     }
   } else {
     out.storage = {
@@ -655,6 +738,8 @@ function validateStep2(): string | null {
       }
     }
   }
+  const lvErr = lvmError()
+  if (lvErr) return lvErr
   if (netMode.value === 'static') {
     if (isBatchStatic.value) {
       // 批量静态：行定义「匹配 + 共享网关/DNS」，地址逐台进矩阵，缺一格即拦
@@ -896,6 +981,77 @@ function kernelArgsError(args: string | undefined): string | null {
   return null
 }
 
+// 与引擎 validateLvmShape 同口径的客户端预检（storage.lvm，docs/04 §5.1.1）：
+// 提前到表单的确定性规则。选择器→盘的解析、快照绑定与逐机重叠留给试算
+// （install-plan 逐机报 LAYOUT_VG_NOT_FOUND / LAYOUT_VG_EXISTS / 重叠码）。
+const LVM_NAME_OK = /^[A-Za-z][A-Za-z0-9_.]{0,63}$/
+
+function lvmError(): string | null {
+  if (storageMode.value !== 'lvm') return null
+  if (vgs.value.length === 0) return 'LVM 卷组档至少声明一个卷组'
+  const seenVg = new Set<string>()
+  let hasRoot = false
+  for (const [gi, g] of vgs.value.entries()) {
+    const vgName = g.name.trim()
+    if (!LVM_NAME_OK.test(vgName)) {
+      return `卷组 ${gi + 1}：名称需字母开头、字母数字与 ._ 组合（禁 -，/dev/mapper 会双写），≤64 字符`
+    }
+    if (seenVg.has(vgName)) return `卷组 "${vgName}" 重复声明`
+    seenVg.add(vgName)
+    if (isDebian.value && g.mode === 'keep') {
+      return `卷组 "${vgName}"：Debian（partman）无法保留既有卷组（keep:vg），请改用新建`
+    }
+    if (g.mode === 'keep') {
+      const seenLv = new Set<string>()
+      for (const [pi, p] of g.preserve.entries()) {
+        if (!p.name.trim()) return `卷组 "${vgName}" 保留挂载 ${pi + 1}：请填写既有 LV 名`
+        if (seenLv.has(p.name.trim())) return `卷组 "${vgName}"：保留挂载 "${p.name}" 重复`
+        seenLv.add(p.name.trim())
+        const m = p.mount.trim()
+        if (!m) return `卷组 "${vgName}" 保留挂载 "${p.name}"：请填写挂载点`
+        if (m === '/' || m === '/boot' || m === '/boot/efi') {
+          return `卷组 "${vgName}" 保留挂载 "${p.name}"：挂载点不能是 ${m}（引导关键路径需全新安装）`
+        }
+        if (p.fs && !FS_OPTIONS.includes(p.fs)) return `卷组 "${vgName}" 保留挂载 "${p.name}"：fs 不合法`
+      }
+      continue
+    }
+    if (!isDebian.value && g.pvs.length === 0) return `卷组 "${vgName}"：至少一个 PV`
+    if (g.logvols.length === 0) return `卷组 "${vgName}"：至少一个逻辑卷`
+    const lvNames = new Set<string>()
+    const lvMounts = new Set<string>()
+    let restCount = 0
+    for (const lv of g.logvols) {
+      const n = lv.name.trim()
+      if (!LVM_NAME_OK.test(n)) return `卷组 "${vgName}"：逻辑卷名需字母开头、字母数字与 ._ 组合（禁 -）`
+      if (lvNames.has(n)) return `卷组 "${vgName}"：逻辑卷 "${n}" 重复`
+      lvNames.add(n)
+      if (!lv.size.trim()) return `卷组 "${vgName}"：逻辑卷 "${n}" 未填大小（rest = 占满卷组剩余）`
+      if (lv.size.trim() === 'rest' && ++restCount > 1) {
+        return `卷组 "${vgName}"：rest 大小的逻辑卷至多一个`
+      }
+      if (!FS_OPTIONS.includes(lv.fs)) return `卷组 "${vgName}"：逻辑卷 "${n}" fs 不合法`
+      if (isDebian.value && lv.fs === 'xfs') {
+        return `卷组 "${vgName}"：Debian netinst 不支持 xfs 逻辑卷（用 ext4）`
+      }
+      const m = lv.mount.trim()
+      if (m === '/boot/efi' || m === '/boot') {
+        return `卷组 "${vgName}"：逻辑卷不能挂 ${m}（本档已固定声明引导分区）`
+      }
+      if (m && m !== 'swap') {
+        if (lvMounts.has(m)) return `卷组 "${vgName}"：挂载点 ${m} 重复声明`
+        lvMounts.add(m)
+        if (m === '/') hasRoot = true
+      }
+    }
+  }
+  if (isDebian.value && vgs.value.length > 1) {
+    return 'Debian（partman）仅支持一个卷组（单 VG 单 PV，PV 自动接线最大盘）'
+  }
+  if (!hasRoot) return 'LVM 卷组档需要一个挂载为 / 的逻辑卷（根分区建在卷组上）'
+  return null
+}
+
 const KEEP_LABEL: Record<string, string> = { full: '完整支持', partial: '部分支持', none: '不支持' }
 
 const HEALTH_GATE_DESC: Record<string, string> = {
@@ -1015,14 +1171,92 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 
         <el-form-item label="存储">
           <el-radio-group v-model="storageMode" :disabled="isWindows">
-            <el-radio-button value="preset">{{ isWindows ? '最大盘整盘 NTFS（windows 固定）' : '整盘擦除最大盘（推荐预设）' }}</el-radio-button>
-            <el-radio-button v-if="!isWindows" value="custom">自定义磁盘布局</el-radio-button>
+            <el-radio-button value="standard">{{ isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' }}</el-radio-button>
+            <el-radio-button v-if="!isWindows" value="custom">自定义分区</el-radio-button>
+            <el-radio-button v-if="!isWindows" value="lvm">LVM 卷组</el-radio-button>
           </el-radio-group>
-          <div v-if="storageMode === 'preset' && !isWindows" class="hint">
-            预设 = 最大盘全盘擦除：512M EFI + 4G swap + 其余 xfs 挂 /。
+          <div v-if="storageMode === 'standard' && !isWindows" class="hint">
+            标准分区 = 最大盘全盘擦除：512M EFI + 4G swap + 其余 xfs 挂 /。
           </div>
           <div v-else-if="isWindows" class="hint">
             windows 方言：单盘 NTFS 布局由引擎固定生成（多盘/软件 RAID/硬件 RAID 卷均不支持）。
+          </div>
+          <div v-else-if="storageMode === 'lvm'" style="width: 100%; margin-top: 8px">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 8px"
+              title="本档固定声明系统盘（最大盘）引导分区：kickstart 族 ESP + /boot，ubuntu/debian 仅 ESP；根分区 / 建在卷组逻辑卷上。PV 整盘消费（隐式擦除），批量装机按每台机器各自解析。"
+            />
+            <el-alert
+              v-if="isDebian"
+              type="warning"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 8px"
+              title="Debian（partman）限制：仅一个卷组、PV 即安装目标盘（最大盘，自动接线）、逻辑卷 fs 限 ext4/vfat/swap、不支持保留既有卷组。"
+            />
+            <el-card v-for="(g, gi) in vgs" :key="gi" shadow="never" class="disk-block">
+              <div class="disk-head">
+                <el-input v-model="g.name" placeholder="卷组名，如 vg0" style="width: 170px" class="mono" />
+                <el-radio-group v-model="g.mode" size="small">
+                  <el-radio-button value="fresh">新建</el-radio-button>
+                  <el-radio-button value="keep">保留现有（重装不格式化）</el-radio-button>
+                </el-radio-group>
+                <el-button type="danger" plain size="small" :icon="Delete" @click="vgs.splice(gi, 1)" />
+              </div>
+              <template v-if="g.mode === 'fresh'">
+                <div v-if="!isDebian" class="part-editor">
+                  <div class="hint" style="margin-bottom: 4px">物理卷（PV）：整盘消费，与磁盘声明互斥</div>
+                  <div v-for="(p, pi) in g.pvs" :key="pi" class="part-row">
+                    <el-tag size="small" effect="plain" class="kind-tag">PV</el-tag>
+                    <el-select v-model="p.selector" style="width: 170px">
+                      <el-option v-for="key in PV_SELECTOR_OPTIONS" :key="key" :value="key" :label="SELECTOR_LABEL[key]" />
+                    </el-select>
+                    <el-button
+                      type="danger"
+                      plain
+                      :icon="Delete"
+                      :disabled="g.pvs.length === 1"
+                      @click="g.pvs.splice(pi, 1)"
+                    />
+                  </div>
+                  <el-button size="small" @click="addPv(g)">+ 添加 PV</el-button>
+                </div>
+                <div v-else class="hint">PV 即安装目标盘（最大盘），由 partman 单目标限制自动接线。</div>
+                <div class="part-editor">
+                  <div class="hint" style="margin-bottom: 4px">逻辑卷（LV）：rest = 占满卷组剩余（至多一个）；swap 卷挂载点填 swap</div>
+                  <div v-for="(l, li) in g.logvols" :key="li" class="part-row">
+                    <el-tag size="small" effect="plain" class="kind-tag">LV</el-tag>
+                    <el-input v-model="l.name" placeholder="LV 名，如 root" style="width: 140px" class="mono" />
+                    <el-input v-model="l.size" placeholder="大小（100G / rest）" style="width: 150px" class="mono" />
+                    <el-select v-model="l.fs" style="width: 100px">
+                      <el-option v-for="f in FS_OPTIONS" :key="f" :value="f" :label="f" />
+                    </el-select>
+                    <el-input v-model="l.mount" placeholder="挂载点，如 /" style="width: 170px" class="mono" />
+                    <el-button type="danger" plain :icon="Delete" @click="g.logvols.splice(li, 1)" />
+                  </div>
+                  <el-button size="small" @click="addLv(g)">+ 添加逻辑卷</el-button>
+                </div>
+              </template>
+              <template v-else>
+                <div class="hint" style="margin-bottom: 4px">
+                  整组原样保留（不格式化）；下方只声明要自动挂回的既有 LV，未列出的装后可手动挂载。
+                </div>
+                <div v-for="(p, pi) in g.preserve" :key="pi" class="part-row">
+                  <el-tag size="small" effect="plain" class="kind-tag">挂载</el-tag>
+                  <el-input v-model="p.name" placeholder="既有 LV 名，如 lvdata" style="width: 160px" class="mono" />
+                  <el-input v-model="p.mount" placeholder="挂载点，如 /data" style="width: 180px" class="mono" />
+                  <el-select v-model="p.fs" placeholder="跟随快照" clearable style="width: 130px">
+                    <el-option v-for="f in FS_OPTIONS" :key="f" :value="f" :label="f" />
+                  </el-select>
+                  <el-button type="danger" plain :icon="Delete" @click="g.preserve.splice(pi, 1)" />
+                </div>
+                <el-button size="small" @click="addPreserve(g)">+ 添加挂载</el-button>
+              </template>
+            </el-card>
+            <el-button size="small" @click="addVg">+ 添加卷组</el-button>
           </div>
           <div v-else style="width: 100%; margin-top: 8px">
             <el-card v-for="(d, di) in disks" :key="di" shadow="never" class="disk-block">

@@ -1118,17 +1118,29 @@ export interface components {
         /**
          * @description `auto` probes Redfish first and falls back to IPMI.
          *     `fake` selects the in-process simulator for development and testing.
+         *     `none` registers a BMC-less (headless) machine (docs/
+         *     13-headless-design.md): identity is the NIC MAC carried in the
+         *     synthetic address `none://<mac>`; installs are driven over PXE with
+         *     the machine's own boot (Wake-on-LAN, graceful in-band reboot of an
+         *     installed system, or a manual power-on as the fallback). Out-of-band
+         *     actions (power, boot device, BIOS, drive erase) are unsupported on
+         *     `none` machines; `credential_id` must be empty.
          * @enum {string}
          */
-        BMCProtocol: "redfish" | "ipmi" | "auto" | "fake";
+        BMCProtocol: "redfish" | "ipmi" | "auto" | "fake" | "none";
         /** @enum {string} */
         BootDevice: "pxe" | "disk" | "cdrom" | "bios";
         /** @enum {string} */
         PowerState: "on" | "off" | "unknown";
         /** @enum {string} */
         MachineState: "registering" | "discovering" | "ready" | "error";
+        /**
+         * @description The required keys must be present for every protocol; for `none`
+         *     their values are the headless identity — `address` is
+         *     `none://<mac>` and `credential_id` is the empty string.
+         */
         BMC: {
-            /** @description Out-of-band management address (host or host:port). */
+            /** @description Out-of-band management address (host or host:port); `none://<mac>` for protocol `none`, `fake://<name>` for the simulator. */
             address: string;
             protocol?: components["schemas"]["BMCProtocol"];
             credential_id: components["schemas"]["CredentialId"];
@@ -1573,6 +1585,60 @@ export interface components {
             /** @description Partitions on the logical device (software mode renders raid lines; hardware mode binds to the discovered drive). */
             partitions?: components["schemas"]["PartitionSpec"][];
         };
+        VolumeGroupSpec: {
+            /**
+             * @description Volume group name. LVM device-mapper encodes `-` in names by
+             *     doubling it under /dev/mapper, so dashes are rejected.
+             */
+            name: string;
+            /**
+             * @description Adopt the machine's EXISTING volume group of this name instead of
+             *     creating one: the VG and all its logical volumes survive the
+             *     reinstall untouched (no reformat); `pvs`/`logvols` must be absent.
+             *     Binding facts come from the machine's layout snapshot (like
+             *     keep:partitions) — a snapshot lacking LVM facts, or a VG missing
+             *     from it, is rejected (LAYOUT_VG_NOT_FOUND). The group's PV devices
+             *     are protected from selector grabs by disks[]/raid/fresh VGs.
+             * @enum {string}
+             */
+            keep?: "vg";
+            /**
+             * @description Physical volumes backing a NEW group. Each entry consumes a WHOLE
+             *     device (implicitly wiped, like raid members) and must not overlap
+             *     disks[] entries, raid members, or other PVs. Exactly one of
+             *     match/raid per entry.
+             */
+            pvs?: {
+                match?: components["schemas"]["DiskSelectorMatch"];
+                /** @description Reference to a storage.raid[] volume name (the whole array becomes a PV). That volume must not declare partitions of its own. */
+                raid?: string;
+            }[];
+            /** @description Logical volumes to create (new-group mode only). */
+            logvols?: {
+                name: string;
+                size: components["schemas"]["SizeSpec"];
+                /** @enum {string} */
+                fs: "vfat" | "xfs" | "ext4" | "swap";
+                /** @description Mountpoint; `swap` declares a swap volume (no fstab entry). ESP mounts (/boot/efi) can never live on LVM. */
+                mount?: string;
+                flags?: string[];
+            }[];
+            /**
+             * @description keep:vg mode only (optional, 0..n): mount intents for EXISTING
+             *     logical volumes. Empty/absent = protect-only adoption — the VG
+             *     must survive and is verified post-install, but nothing is mounted
+             *     (undeclared LVs stay unmounted for manual mounting). LVs inside a
+             *     kept group that are not listed are left untouched either way.
+             */
+            preserve?: {
+                /** @description Existing logical volume name within the group. */
+                name: string;
+                /** @description Mountpoint; must not be /, /boot, or /boot/efi. */
+                mount: string;
+                /** @enum {string} */
+                fs?: "vfat" | "xfs" | "ext4" | "swap";
+            }[];
+        };
         StorageSpec: {
             disks: components["schemas"]["DiskSpec"][];
             /**
@@ -1581,6 +1647,28 @@ export interface components {
              *     entries. Level/member-count rules: 0→2+, 1→2+, 5→3+, 10→4+.
              */
             raid?: components["schemas"]["RaidSpec"][];
+            /**
+             * @description Declarative LVM volume groups, built at install time by the
+             *     installer (anaconda volgroup/logvol, curtin lvm_volgroup/
+             *     lvm_partition, partman lvm recipe) — the BMC has no LVM concept,
+             *     so no configure_raid involvement. Two modes per group: NEW
+             *     (declare pvs+logvols — PVs consume whole devices like raid
+             *     members) or KEEP (declare keep:vg — adopt the machine's existing
+             *     group, optional preserve[] mounts). Dialect limits: kickstart
+             *     fully supports both modes; autoinstall (curtin) rejects
+             *     software-RAID PVs but supports both modes; preseed (debian)
+             *     supports new groups only, exactly one VG with one PV on the
+             *     install target, and cannot keep existing groups; windows/agent
+             *     reject the whole block. VG/LV names must not contain dashes.
+             *     Existing groups NOT declared here are never touched: their PV
+             *     disks stay outside the consumption set, the installed system
+             *     auto-activates them at boot, and they can be mounted by hand
+             *     (debian installs without the lvm2 package when no LVM is
+             *     declared — apt install lvm2 first). Undeclared groups get no
+             *     selector protection: a disks[]/PV selector may still claim their
+             *     disks — declare keep:vg to protect one explicitly.
+             */
+            lvm?: components["schemas"]["VolumeGroupSpec"][];
             root_device_hints?: {
                 min_size_gb?: number;
             };
@@ -1780,6 +1868,16 @@ export interface components {
              */
             installer: "setup" | "agent" | "auto";
             /**
+             * @description Headless (protocol=none) boot stage: how long to wait for boot
+             *     evidence (a PXE sighting of the machine) before warning the
+             *     operator to power the machine on manually (docs/
+             *     13-headless-design.md §4). The wait itself continues — a manual
+             *     power-on after the window self-heals the flow — up to the task
+             *     timeout. BMC-carried strategies ignore it.
+             * @default 600
+             */
+            evidence_wait_seconds: number;
+            /**
              * @description Extra installer-environment kernel arguments (docs/04-install-spec.md
              *     §5.4), appended to the boot line the engine composes for the
              *     installer kernel (both carriers: the repacked ISO's isolinux/grub
@@ -1965,6 +2063,16 @@ export interface components {
             captured_at?: string;
             source?: string;
             disks: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * @description NIC facts from the probe's /sys/class/net scan (headless flow,
+             *     docs/13-headless-design.md §3.1): each entry carries at least
+             *     `name` and `mac`, optionally `link_up`. Claim projects these
+             *     onto the machine's hardware view so PXE observation and netboot
+             *     arming can key on the MACs.
+             */
+            nics?: {
                 [key: string]: unknown;
             }[];
         };
