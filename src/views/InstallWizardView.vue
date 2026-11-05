@@ -615,11 +615,17 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
   // installer 是 windows 专用通路（setup/agent/auto），linux 方言携带即被引擎
   // SCHEMA_INVALID_BOOT_INSTALLER 拒绝——仅 windows 序列化。生成的 BootSpec 因
   // 字段带 default 被标为必填（openapi-typescript 行为），而契约本无 required，
-  // 省略合法，故断言。
+  // 省略合法，故断言。kernel_args / installed_kernel_args 反之：windows 引擎
+  // 拒绝（WinPE 无内核命令行），仅 linux 序列化；空省略。
+  const kernelArgsOut: { kernel_args?: string; installed_kernel_args?: string } = {}
+  if (!isWindows.value) {
+    if (spec.boot?.kernel_args) kernelArgsOut.kernel_args = spec.boot.kernel_args
+    if (spec.boot?.installed_kernel_args) kernelArgsOut.installed_kernel_args = spec.boot.installed_kernel_args
+  }
   out.boot = (
     isWindows.value
       ? { strategy: spec.boot?.strategy ?? 'virtual_media', installer: spec.boot?.installer ?? 'auto' }
-      : { strategy: spec.boot?.strategy ?? 'virtual_media' }
+      : { strategy: spec.boot?.strategy ?? 'virtual_media', ...kernelArgsOut }
   ) as InstallSpec['boot']
   return out
 }
@@ -635,6 +641,10 @@ function validateStep2(): string | null {
     return '镜像 source 需为 http(s) 地址'
   }
   if (rootMode.value === 'manual' && rootPassword.value.length < 6) return '手动 root 密码至少 6 位'
+  const kaErr = !isWindows.value ? kernelArgsError(spec.boot?.kernel_args) : null
+  if (kaErr) return kaErr
+  const ikaErr = !isWindows.value ? kernelArgsError(spec.boot?.installed_kernel_args) : null
+  if (ikaErr) return ikaErr
   const badRepo = repos.value.find((r) => (r.name || r.url) && !(r.name && REPO_NAME_OK.test(r.name) && /^https?:\/\//.test(r.url)))
   if (badRepo) return `软件源 ${badRepo.name || badRepo.url} 的 name/URL 不合法（name 限字母数字._-，URL 需 http(s)）`
   if (storageMode.value === 'custom') {
@@ -844,6 +854,47 @@ const policyDraftInstaller = computed({
     spec.boot!.installer = v
   },
 })
+
+// 内核参数逃生口（boot.kernel_args / boot.installed_kernel_args，docs/04
+// §5.4）：无人值守装机的"GRUB 按 e"替代——安装器内核挂在硬件上（典型：
+// nouveau 敌对 GPU）时，有人值守可手敲内核参数解围，无人值守只能靠这里。
+// 空串 = 未声明（序列化时省略，契约本无该键也可缺省）。
+const kernelArgs = computed({
+  get: () => spec.boot?.kernel_args ?? '',
+  set: (v: string) => {
+    spec.boot!.kernel_args = v.trim() ? v.trim() : undefined
+  },
+})
+const installedKernelArgs = computed({
+  get: () => spec.boot?.installed_kernel_args ?? '',
+  set: (v: string) => {
+    spec.boot!.installed_kernel_args = v.trim() ? v.trim() : undefined
+  },
+})
+
+// 与引擎 validateBootExtras 同口径的客户端预检（SCHEMA_INVALID_BOOT 提前到
+// 表单）：token 须匹配引擎同一字符集，管道自有 key（引擎已拼，重复只遮蔽
+// 语义）直接点名拒绝。
+const KERNEL_ARG_TOKEN_OK = /^[A-Za-z0-9._,:%/+=@^~-]+$/
+const RESERVED_KERNEL_ARGS = [
+  'BOOTIF', 'ip', 'console', 'modules', 'inst.ks', 'inst.repo', 'inst.syslog',
+  'inst.text', 'auto', 'priority', 'preseed/file', 'seedfrom', 'ds', 'file',
+  'modloop', 'alpine_repo', 'apkovl', 'mammoth_base',
+]
+
+function kernelArgsError(args: string | undefined): string | null {
+  if (!args?.trim()) return null
+  for (const tok of args.trim().split(/\s+/)) {
+    if (!KERNEL_ARG_TOKEN_OK.test(tok)) {
+      return `内核参数 ${tok} 含不支持的字符（token 只允许字母数字与 ._,:%/+=@^~-，空白分隔，不支持引号/分号）`
+    }
+    const key = tok.includes('=') ? tok.slice(0, tok.indexOf('=')) : tok
+    if (RESERVED_KERNEL_ARGS.includes(key)) {
+      return `内核参数 ${key} 由引擎自动拼装（console 走部署配置 MAMMOTH_INSTALL_CONSOLE），不能重复声明`
+    }
+  }
+  return null
+}
 
 const KEEP_LABEL: Record<string, string> = { full: '完整支持', partial: '部分支持', none: '不支持' }
 
@@ -1270,6 +1321,27 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
           <div v-else-if="spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="hint">
             Rocky9 系介质的 vMedia 是引导型 CD（介质上无安装包）：安装源需为 nfs:// 或 http(s) 树 URL——镜像库引用（image.id）建议搭配 PXE 使用。
+          </div>
+        </el-form-item>
+
+        <el-form-item v-if="!isWindows" label="内核参数（排障逃生口）">
+          <div style="width: 100%">
+            <el-input
+              v-model="kernelArgs"
+              class="mono"
+              placeholder="安装器引导行追加，例：nomodeset modprobe.blacklist=nouveau"
+            />
+            <el-input
+              v-model="installedKernelArgs"
+              class="mono"
+              style="margin-top: 6px"
+              placeholder="装好的系统持久化，例：modprobe.blacklist=nouveau"
+            />
+            <div class="hint">
+              无人值守装机的"GRUB 按 e"替代：安装器内核被硬件挂死（典型：GPU 触发 nouveau
+              卡死）时，上行走安装阶段、下行走装好后的系统首启（装上厂商驱动前同样会挂）。空白分隔；
+              BOOTIF/ip/console/inst.ks 等引擎自有参数不可声明，引号与分号不支持。
+            </div>
           </div>
         </el-form-item>
 
