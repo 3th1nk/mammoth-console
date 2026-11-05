@@ -182,11 +182,16 @@ function addPartition(d: DiskRow) {
 }
 
 // LVM 卷组（storage.lvm，docs/04 §5.1.1）：本档自带固定引导盘声明（最大盘
-// ESP + kickstart 族 /boot），根分区建在卷组逻辑卷上。PV 整盘消费，与磁盘
-// 声明互斥；保留模式(keep:vg)整组采用既有卷组，只声明挂载意图。
-// PV 不提供「最大盘」选项——引导盘已占；debian(partman)连 PV 行都没有
-// （单目标 = 最大盘，buildSpec 自动接线）。
-const PV_SELECTOR_OPTIONS = (Object.keys(SELECTOR_LABEL) as SelectorKind[]).filter((k) => k !== 'largest')
+// ESP + kickstart 族 /boot），根分区建在卷组逻辑卷上。PV 默认整盘消费，与
+// 磁盘声明互斥；「引导盘同盘」= 单盘布局——PV 占系统盘声明分区之外的剩余
+// 空间（引擎分区切出语义，docs/04 §5.1.1），单盘机器即选它。
+// 保留模式(keep:vg)整组采用既有卷组，只声明挂载意图。
+// debian(partman)无 PV 行（单目标 = 最大盘，buildSpec 自动接线）。
+const PV_SELECTOR_OPTIONS = Object.keys(SELECTOR_LABEL) as SelectorKind[]
+const PV_SELECTOR_LABEL: Record<SelectorKind, string> = {
+  ...SELECTOR_LABEL,
+  largest: '引导盘同盘（剩余空间）',
+}
 interface LvRow { name: string; size: string; fs: string; mount: string }
 interface PreserveRow { name: string; mount: string; fs: string }
 interface VgRow {
@@ -1049,6 +1054,12 @@ function lvmError(): string | null {
     return 'Debian（partman）仅支持一个卷组（单 VG 单 PV，PV 自动接线最大盘）'
   }
   if (!hasRoot) return 'LVM 卷组档需要一个挂载为 / 的逻辑卷（根分区建在卷组上）'
+  // 「引导盘同盘」= 引擎分区切出 PV（docs/04 §5.1.1）：引导盘的剩余空间只
+  // 供一个卷组，声明两次必然在试算被拒——这里提前点名。
+  const largestHolders = vgs.value.filter(
+    (g) => g.mode === 'fresh' && g.pvs.some((p) => p.selector === 'largest'),
+  ).length
+  if (largestHolders > 1) return '「引导盘同盘」的 PV 只能属于一个卷组（系统盘剩余空间只有一份）'
   return null
 }
 
@@ -1187,7 +1198,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               :closable="false"
               show-icon
               style="margin-bottom: 8px"
-              title="本档固定声明系统盘（最大盘）引导分区：kickstart 族 ESP + /boot，ubuntu/debian 仅 ESP；根分区 / 建在卷组逻辑卷上。PV 整盘消费（隐式擦除），批量装机按每台机器各自解析。"
+              title="本档固定声明系统盘（最大盘）引导分区：kickstart 族 ESP + /boot，ubuntu/debian 仅 ESP；根分区 / 建在卷组逻辑卷上。PV 默认整盘消费（隐式擦除）；单盘机器选「引导盘同盘」= PV 占系统盘剩余空间。批量装机按每台机器各自解析。"
             />
             <el-alert
               v-if="isDebian"
@@ -1208,11 +1219,11 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               </div>
               <template v-if="g.mode === 'fresh'">
                 <div v-if="!isDebian" class="part-editor">
-                  <div class="hint" style="margin-bottom: 4px">物理卷（PV）：整盘消费，与磁盘声明互斥</div>
+                  <div class="hint" style="margin-bottom: 4px">物理卷（PV）：整盘消费，与磁盘声明互斥；「引导盘同盘」= 单盘布局（PV 占系统盘剩余空间）</div>
                   <div v-for="(p, pi) in g.pvs" :key="pi" class="part-row">
                     <el-tag size="small" effect="plain" class="kind-tag">PV</el-tag>
-                    <el-select v-model="p.selector" style="width: 170px">
-                      <el-option v-for="key in PV_SELECTOR_OPTIONS" :key="key" :value="key" :label="SELECTOR_LABEL[key]" />
+                    <el-select v-model="p.selector" style="width: 210px">
+                      <el-option v-for="key in PV_SELECTOR_OPTIONS" :key="key" :value="key" :label="PV_SELECTOR_LABEL[key]" />
                     </el-select>
                     <el-button
                       type="danger"
