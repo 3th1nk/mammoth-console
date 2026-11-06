@@ -891,6 +891,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/images/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch the cached image file (machine face)
+         * @description Machine-facing endpoint for the dd pathway (docs/09「镜像直写通路」):
+         *     the streaming machine pulls the cached whole-disk image over HTTP —
+         *     the same trust model as /netboot/files (the provisioning L2 is the
+         *     boundary; the path carries no bearer token). Range requests are
+         *     honored (206 with Content-Range, Accept-Ranges: bytes), same
+         *     resumable-fetch semantics as the netboot trees.
+         */
+        get: operations["fetchImageFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks": {
         parameters: {
             query?: never;
@@ -1804,11 +1831,23 @@ export interface components {
                  *     The special key `dd` selects the image-direct-write pathway
                  *     (docs/09「镜像直写通路」): the spec's image is a pre-built
                  *     whole-disk image streamed onto exactly one target disk by the
-                 *     agent initramfs — PXE-only; checksum required; the image owns
-                 *     the partition table, so partitions/lvm/raid/identity/network
+                 *     agent initramfs — both boot carriers (virtual_media via the
+                 *     alpine standard ISO mounted by the BMC, and PXE via the
+                 *     netboot tarball); checksum required; the image owns the
+                 *     partition table, so partitions/lvm/raid/identity/network
                  *     intent is honestly rejected with 422.
                  */
                 distro: string;
+                /**
+                 * Format: int64
+                 * @description dd pathway only: the image's byte span (read-back verification
+                 *     spans exactly these bytes after the write). The artifact-library
+                 *     resolution carries it automatically from the registration;
+                 *     bare-inline specs should declare it explicitly — without it the
+                 *     runtime falls back to stream-hash-only verification. Other
+                 *     distros reject the field.
+                 */
+                size_bytes?: number;
                 /**
                  * @description dd pathway only: the image's compression. raw = uncompressed;
                  *     raw.gz = gzip (busybox gunzip inline — the runtime decompresses
@@ -3510,6 +3549,36 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    fetchImageFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image file bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The image is not in the ready state (still fetching or failed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listWebhooks: {

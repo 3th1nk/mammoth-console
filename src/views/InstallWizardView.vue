@@ -110,7 +110,6 @@ watch(isWindows, (win) => {
 watch(isDD, (dd) => {
   if (dd) {
     imageMode.value = 'inline' // 整盘镜像走 URL 直填(机器直连拉流)
-    spec.boot!.strategy = 'pxe' // alpine netboot 载体 PXE-only
   }
 })
 watch(hasHeadlessTarget, (h) => {
@@ -764,7 +763,6 @@ function validateStep2(): string | null {
     if (!spec.image.source) return '镜像直写:请填写整盘镜像的 http(s) 地址'
     if (!/^https?:\/\//.test(spec.image.source)) return '镜像直写:source 需为 http(s) 地址(机器直连拉流)'
     if (!spec.image.checksum?.trim()) return '镜像直写:checksum(SHA256,未压缩镜像)必填——写盘流逐字节校验的基准'
-    if (spec.boot?.strategy !== 'pxe') return '镜像直写仅支持 PXE 载体'
     if (netMode.value === 'static') {
       const bad = nics.value.some((r) => r.kind === 'bond')
       if (bad) return '镜像直写首启 seed 暂只承载平面接口——bond/vlan 请移除或改用自动(DHCP)'
@@ -1232,7 +1230,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </el-select>
           <div v-if="autoDistroHint" class="hint" style="color: #67c23a">{{ autoDistroHint }}</div>
           <div v-if="distroChoice" class="hint">
-            {{ distroChoice === 'dd' ? '镜像直写通路 · 整盘镜像流式写盘 + NoCloud seed 首启 · PXE-only' : distros.find((d) => d.name === distroChoice)?.family + ' 方言 · 保留分区 ' + (KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—') }}
+            {{ distroChoice === 'dd' ? '镜像直写通路 · 整盘镜像流式写盘 + NoCloud seed 首启 · 虚拟介质 / PXE 双载体' : distros.find((d) => d.name === distroChoice)?.family + ' 方言 · 保留分区 ' + (KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—') }}
           </div>
         </el-form-item>
 
@@ -1614,9 +1612,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         </el-form-item>
 
         <el-form-item label="引导方式">
-          <div v-if="isDD" class="hint">镜像直写固定走 PXE（alpine netboot 载体）。</div>
           <el-radio-group
-            v-else
             v-model="spec.boot!.strategy"
             :disabled="isWindows && policyDraftInstaller === 'agent'"
           >
