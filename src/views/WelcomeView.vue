@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useConnectionStore } from '@/stores/connection'
 import { errorMessage } from '@/api/problem'
+import { formatVersion } from '@/utils/format'
 
 const conn = useConnectionStore()
 const router = useRouter()
@@ -20,7 +21,7 @@ async function connect() {
   probing.value = true
   try {
     const caps = await conn.connect(baseUrl.value.trim(), token.value.trim())
-    ElMessage.success(`已连接引擎 v${caps.version}`)
+    ElMessage.success(`已连接引擎 ${formatVersion(caps.version)}`)
     router.push({ name: 'dashboard' })
   } catch (e) {
     ElMessage.error(errorMessage(e))

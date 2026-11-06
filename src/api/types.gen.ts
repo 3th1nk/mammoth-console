@@ -1006,7 +1006,7 @@ export interface components {
         JobId: string;
         TaskId: string;
         Capabilities: {
-            /** @description Contract version served by this instance. */
+            /** @description Engine build version of this instance, in git tag form (e.g. v1.3.0; between tags, git describe output such as v1.3.0-29-ge9553f6) — not the API contract version (info.version). */
             version: string;
             /**
              * @description The set_bios_attributes confirmation policy (docs/07-bmc.md §6) — required rejects submissions without the explicit confirm flag; optional keeps only the runner-side live-table validation.

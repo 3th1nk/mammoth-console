@@ -9,6 +9,7 @@ import { subscribeSse, type SseHandle } from '@/api/sse'
 import { useConnectionStore } from '@/stores/connection'
 import { useThemeStore } from '@/stores/theme'
 import { copyToClipboard } from '@/utils/clipboard'
+import { formatVersion } from '@/utils/format'
 import CommandPalette from '@/components/CommandPalette.vue'
 
 const conn = useConnectionStore()
@@ -94,7 +95,7 @@ function copyPassword() {
       </div>
       <div class="engine-version">
         <el-tag v-if="conn.capabilities" type="success" effect="plain" size="small">
-          引擎 v{{ conn.capabilities.version }}
+          引擎 {{ formatVersion(conn.capabilities.version) }}
         </el-tag>
         <el-tag v-else type="danger" effect="plain" size="small">未连接</el-tag>
       </div>

@@ -7,7 +7,7 @@ import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { useConnectionStore } from '@/stores/connection'
 import StateBadge from '@/components/StateBadge.vue'
-import { formatTime } from '@/utils/format'
+import { formatTime, formatVersion } from '@/utils/format'
 
 const MACHINES_STATS_PAGE = 200
 
@@ -74,7 +74,7 @@ const onboardingSteps = computed(() => [
   {
     done: true,
     title: '连接引擎',
-    desc: `已连接 v${conn.capabilities?.version ?? ''}`,
+    desc: `已连接 ${formatVersion(conn.capabilities?.version)}`,
     to: '',
   },
   {

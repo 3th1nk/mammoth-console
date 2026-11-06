@@ -8,6 +8,7 @@ import { getClient } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/problem'
 import DistroBadge from '@/components/DistroBadge.vue'
 import { resolveDistroKey, familyLabel, type DistroFamilyKey } from '@/utils/distro'
+import { formatVersion } from '@/utils/format'
 
 /** capabilities distros 按"族"聚合（引擎按 distro+版本注册，UI 按族呈现）。 */
 const conn = useConnectionStore()
@@ -52,7 +53,7 @@ async function save() {
   probing.value = true
   try {
     const caps = await conn.connect(baseUrl.value.trim(), token.value.trim() || conn.token)
-    ElMessage.success(`已连接引擎 v${caps.version}`)
+    ElMessage.success(`已连接引擎 ${formatVersion(caps.version)}`)
     editing.value = false
   } catch (e) {
     ElMessage.error(errorMessage(e))
@@ -130,7 +131,6 @@ const configRows = computed<ConfigRow[]>(() => {
 
     <el-card shadow="never" header="引擎能力（GET /api/v1，只读事实源）">
       <el-descriptions :column="3" border size="small" class="mb-inner">
-        <el-descriptions-item label="契约版本">{{ conn.capabilities?.version ?? '—' }}</el-descriptions-item>
         <el-descriptions-item label="缺省引导方式">{{ BOOT_LABEL[conn.capabilities?.boot_strategy_default ?? ''] ?? conn.capabilities?.boot_strategy_default ?? '—' }}</el-descriptions-item>
         <el-descriptions-item label="资源注册">{{ conn.capabilities?.resources?.join('、') || '—' }}</el-descriptions-item>
         <el-descriptions-item label="PXE / 零注册">
