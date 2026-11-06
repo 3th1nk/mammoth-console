@@ -71,9 +71,16 @@ const readyTargets = computed(() => targetRows.value.filter((r) => !r.busy))
 // ── Step2 安装意图 ──────────────────────────────────────────────────────────
 const distros = computed(() => conn.capabilities?.distros ?? [])
 const bootDefault = computed(() => conn.capabilities?.boot_strategy_default ?? 'virtual_media')
+// 引导证据等待窗(headless,docs/13 §4):0 = 引擎缺省(10m)
+const evidenceWait = computed({
+  get: () => spec.boot?.evidence_wait_seconds ?? 0,
+  set: (v: number | undefined) => {
+    spec.boot!.evidence_wait_seconds = v ?? 0
+  },
+})
 
 const spec = reactive<InstallSpec>({
-  image: { distro: '' },
+  image: { distro: '', format: 'raw.gz' },
   // evidence_wait_seconds:0 = 引擎缺省(10m 等待窗)——生成器把带 default 的
   // 字段标成必填(openapi-typescript 已知坑,docs/03 §199),显式给缺省值。
   boot: { strategy: bootDefault.value, installer: 'auto', evidence_wait_seconds: 0 },
@@ -87,6 +94,12 @@ const distroChoice = computed({
 })
 
 const isWindows = computed(() => spec.image.distro.toLowerCase().includes('win'))
+// 镜像直写通路(image.distro=dd,docs/09「镜像直写通路」):整盘镜像流式写盘
+const isDD = computed(() => spec.image.distro === 'dd')
+// headless 目标(protocol=none):装机构网段需 PXE,boot 强制 pxe;
+// 引导等待窗(boot.evidence_wait_seconds)默认引擎值 10m
+const headlessTargets = computed(() => readyTargets.value.filter((r) => (r.machine as any).bmc?.protocol === 'none'))
+const hasHeadlessTarget = computed(() => headlessTargets.value.length > 0)
 const distroFamily = computed(() => distros.value.find((x) => x.name === spec.image.distro)?.family)
 const isDebian = computed(() => distroFamily.value === 'preseed')
 
@@ -94,9 +107,20 @@ const isDebian = computed(() => distroFamily.value === 'preseed')
 watch(isWindows, (win) => {
   if (win && spec.boot?.strategy !== 'pxe') spec.boot!.strategy = 'virtual_media'
 })
+watch(isDD, (dd) => {
+  if (dd) {
+    imageMode.value = 'inline' // 整盘镜像走 URL 直填(机器直连拉流)
+    spec.boot!.strategy = 'pxe' // alpine netboot 载体 PXE-only
+  }
+})
+watch(hasHeadlessTarget, (h) => {
+  if (h) spec.boot!.strategy = 'pxe' // 无带外机器只能 PXE + 引导证据等待
+})
 
 // ── 镜像：库选择 / 内联 ────────────────────────────────────────────────────
 const imageMode = ref<'library' | 'inline'>('library')
+// dd 镜像压缩(docs/09):raw.gz = busybox 原生解压(推荐交付),raw 零依赖
+const imageFormat = ref<'raw' | 'raw.gz' | 'raw.xz'>('raw.gz')
 const imagesQuery = useQuery({
   queryKey: ['wizard-images'],
   queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
@@ -502,7 +526,7 @@ function removeRepo(idx: number) {
 // 试算（install-plan）不做 image.id 解析：库镜像在试算时用注册件的
 // source_url + digest 代替，提交仍用 id（引擎提交时才解析为缓存文件）。
 function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
-  const image: InstallSpec['image'] = { distro: spec.image.distro }
+  const image: InstallSpec['image'] = { distro: spec.image.distro, format: spec.image.format ?? 'raw.gz' }
   if (imageMode.value === 'library' && chosenImageId.value) {
     if (opts.forPlan) {
       const reg = readyImages.value.find((i) => i.id === chosenImageId.value)
@@ -519,10 +543,22 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
     if (spec.image.source) image.source = spec.image.source
     if (spec.image.checksum) image.checksum = spec.image.checksum
   }
+  if (isDD.value) {
+    // dd(docs/09):format 是通路字段(生成器把带 default 的字段标为必填,
+    // 而契约本无 required——固定携带);checksum 是通路硬前置
+    ;(image as InstallSpec['image']).format = imageFormat.value
+    if (spec.image.checksum) image.checksum = spec.image.checksum
+  }
   const out: InstallSpec = { image }
 
   // 存储
-  if (isWindows.value) {
+  if (isDD.value) {
+    // dd:整盘镜像自带分区表——单目标盘 wipe,无分区声明(引擎诚实拒分区)
+    out.storage = {
+      alignment: '4k',
+      disks: [{ select: { match: { size: 'largest' } }, wipe: true }],
+    }
+  } else if (isWindows.value) {
     // windows：单目标盘 NTFS，布局由方言渲染固定生成（contract: 多盘/RAID ❌）
     out.storage = {
       alignment: '4k',
@@ -723,6 +759,18 @@ const REPO_NAME_OK = /^[A-Za-z0-9._-]+$/
 
 function validateStep2(): string | null {
   if (!spec.image.distro) return '请选择发行版'
+  // dd(docs/09):机器直连拉流——http(s) source 与 checksum 都是通路硬前置
+  if (isDD.value) {
+    if (!spec.image.source) return '镜像直写:请填写整盘镜像的 http(s) 地址'
+    if (!/^https?:\/\//.test(spec.image.source)) return '镜像直写:source 需为 http(s) 地址(机器直连拉流)'
+    if (!spec.image.checksum?.trim()) return '镜像直写:checksum(SHA256,未压缩镜像)必填——写盘流逐字节校验的基准'
+    if (spec.boot?.strategy !== 'pxe') return '镜像直写仅支持 PXE 载体'
+    if (netMode.value === 'static') {
+      const bad = nics.value.some((r) => r.kind === 'bond')
+      if (bad) return '镜像直写首启 seed 暂只承载平面接口——bond/vlan 请移除或改用自动(DHCP)'
+    }
+    return null // 其余标准段(密码强度等)照走下方通用校验
+  }
   if (imageMode.value === 'library' && !chosenImageId.value) return '请从镜像库选择镜像'
   if (imageMode.value === 'inline' && !spec.image.source) return '请填写镜像 source 地址'
   if (imageMode.value === 'inline' && spec.image.source && !/^https?:\/\//.test(spec.image.source)) {
@@ -1130,10 +1178,14 @@ const HEALTH_GATE_DESC: Record<string, string> = {
     <el-card v-else-if="step === 2" shadow="never">
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="镜像" required>
-          <el-radio-group v-model="imageMode">
+          <el-radio-group v-if="!isDD" v-model="imageMode">
             <el-radio-button value="library">从镜像库选择（推荐）</el-radio-button>
             <el-radio-button value="inline">直接填写镜像地址</el-radio-button>
           </el-radio-group>
+          <div v-else class="hint" style="margin-bottom: 6px">
+            镜像直写：整盘镜像（自带分区表/引导器）由 agent 运行时流式写入目标盘，
+            写盘流逐字节 SHA256 校验；首启意图（主机名/网络/凭证）随 NoCloud seed 生效。
+          </div>
           <div v-if="imageMode === 'library'" style="width: 100%; margin-top: 6px">
             <el-select v-model="chosenImageId" placeholder="选择就绪的库镜像" style="width: 420px">
               <el-option v-for="i in readyImages" :key="i.id" :value="i.id" :label="i.name || i.id">
@@ -1151,12 +1203,17 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div v-else style="width: 100%; margin-top: 6px">
             <el-input
               v-model="spec.image.source"
-              placeholder="https://mirror.example.com/rocky9.iso（引擎可达；粘贴后自动识别发行版）"
+              :placeholder="isDD ? 'https://images.example.com/thor.img.gz（机器直连可达的整盘镜像）' : 'https://mirror.example.com/rocky9.iso（引擎可达；粘贴后自动识别发行版）'"
               class="mono"
             />
+            <el-select v-if="isDD" v-model="imageFormat" style="margin-top: 6px; width: 220px">
+              <el-option value="raw.gz" label="raw.gz（gzip，推荐）" />
+              <el-option value="raw.xz" label="raw.xz（需扩展池）" />
+              <el-option value="raw" label="raw（未压缩）" />
+            </el-select>
             <el-input
               v-model="spec.image.checksum"
-              placeholder="校验和: 9f86d8... (SHA256，可选，建议填写)"
+              :placeholder="isDD ? '校验和: 9f86d8... (未压缩镜像的 SHA256，必填)' : '校验和: 9f86d8... (SHA256，可选，建议填写)'"
               class="mono"
               style="margin-top: 6px"
             />
@@ -1181,7 +1238,11 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         </el-form-item>
 
         <el-form-item label="存储">
-          <el-radio-group v-model="storageMode" :disabled="isWindows">
+          <div v-if="isDD" class="hint">
+            单目标盘（最大盘）整盘写入——镜像自带分区表与引导器，引擎不再声明分区；
+            LVM/自定义分区不适用于本通路。
+          </div>
+          <el-radio-group v-else v-model="storageMode" :disabled="isWindows">
             <el-radio-button value="standard">{{ isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' }}</el-radio-button>
             <el-radio-button v-if="!isWindows" value="custom">自定义分区</el-radio-button>
             <el-radio-button v-if="!isWindows" value="lvm">LVM 卷组</el-radio-button>
@@ -1513,7 +1574,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div class="hint">全新系统默认不开任何入站管理面；按需开启是运营者的安全决策。</div>
         </el-form-item>
 
-        <el-form-item v-if="!isWindows" label="软件源">
+        <el-form-item v-if="!isWindows && !isDD" label="软件源">
           <div style="width: 100%">
             <div v-for="(r, idx) in repos" :key="idx" class="repo-row">
               <el-input v-model="r.name" placeholder="name" style="width: 130px" class="mono" />
@@ -1527,7 +1588,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
         </el-form-item>
 
-        <el-form-item :label="isWindows ? '脚本（Windows：装后走引擎托管首启链；装前仅 setup 通路的 WinPE）' : '脚本'">
+        <el-form-item v-if="!isDD" :label="isWindows ? '脚本（Windows：装后走引擎托管首启链；装前仅 setup 通路的 WinPE）' : '脚本'">
           <div style="width: 100%">
             <el-card v-for="(sc, i) in scripts" :key="i" shadow="never" class="script-block">
               <div class="script-head">
@@ -1554,7 +1615,9 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         </el-form-item>
 
         <el-form-item label="引导方式">
+          <div v-if="isDD" class="hint">镜像直写固定走 PXE（alpine netboot 载体）。</div>
           <el-radio-group
+            v-else
             v-model="spec.boot!.strategy"
             :disabled="isWindows && policyDraftInstaller === 'agent'"
           >
@@ -1564,8 +1627,22 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <div v-if="spec.boot?.strategy === 'pxe' && !conn.capabilities?.netboot_enabled" class="hint" style="color: #e6a23c">
             引擎未启用 netboot，PXE 提交会被拒绝。
           </div>
-          <div v-else-if="spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="hint">
+          <div v-else-if="!isDD && spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="hint">
             Rocky9 系介质的 vMedia 是引导型 CD（介质上无安装包）：安装源需为 nfs:// 或 http(s) 树 URL——镜像库引用（image.id）建议搭配 PXE 使用。
+          </div>
+          <div v-if="hasHeadlessTarget" style="width: 100%; margin-top: 6px">
+            <div class="hint" style="color: #e6a23c">
+              含 {{ headlessTargets.length }} 台无带外机器（protocol=none）：PXE-only，引导等待窗内无 PXE sighting
+              将告警并等待人工上电（任务超时为总上限）。
+            </div>
+            <el-input-number
+              v-model="evidenceWait"
+              :min="60"
+              :max="3600"
+              :step="60"
+              style="margin-top: 4px"
+            />
+            <span class="hint" style="margin-left: 8px">引导证据等待窗（秒；0 = 引擎缺省 10 分钟）</span>
           </div>
         </el-form-item>
 

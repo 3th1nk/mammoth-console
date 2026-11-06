@@ -22,7 +22,21 @@ const visible = computed({
 })
 
 const bmcAddress = ref('')
-const protocol = ref<'auto' | 'redfish' | 'ipmi' | 'fake'>('auto')
+const protocol = ref<'auto' | 'redfish' | 'ipmi' | 'fake' | 'none'>('auto')
+// headless（protocol=none）形态：机器无带外控制器，NIC MAC 即身份——
+// 引擎契约是合成地址 none://<mac>（docs/13-headless-design.md §2），表单
+// 只收 MAC 并自动拼前缀；无 BMC 凭证（credential_id 留空）。
+const headlessMac = ref('')
+const isHeadless = computed(() => protocol.value === 'none')
+const MAC_OK = /^[0-9a-fA-F]{2}(:?[0-9a-fA-F]{2}){5}$/
+
+function headlessAddress(): string {
+  const mac = headlessMac.value.trim()
+  if (!mac) return ''
+  const norm = mac.replace(/-/g, '').replace(/:/g, '').toLowerCase()
+  const colon = norm.replace(/(..)(..)(..)(..)(..)(..)/, '$1:$2:$3:$4:$5:$6')
+  return 'none://' + colon
+}
 const credMode = ref<'new' | 'existing'>('new')
 const credName = ref('')
 const credUser = ref('')
@@ -48,6 +62,7 @@ watch(visible, (v) => {
   if (v) {
     bmcAddress.value = ''
     protocol.value = 'auto'
+    headlessMac.value = ''
     credMode.value = 'new'
     credName.value = ''
     credUser.value = ''
@@ -96,30 +111,40 @@ async function createCredential(): Promise<string> {
 }
 
 async function submit() {
-  if (!bmcAddress.value.trim()) {
-    ElMessage.warning('请填写 BMC 地址')
-    return
-  }
-  if (credMode.value === 'new' && (!credName.value.trim() || !credUser.value || !credPass.value)) {
-    ElMessage.warning('请填写新凭证的名称、用户名与密码')
-    return
-  }
-  if (credMode.value === 'existing' && !credId.value.trim()) {
-    ElMessage.warning('请填写已有凭证 ID（cred_…）')
-    return
+  let bmcAddressFinal = bmcAddress.value.trim()
+  let credentialIdFinal = credId.value.trim()
+  if (isHeadless.value) {
+    if (!MAC_OK.test(headlessMac.value.trim())) {
+      ElMessage.warning('请填写装机网卡的 MAC 地址（如 AA:BB:CC:DD:EE:01）')
+      return
+    }
+    bmcAddressFinal = headlessAddress()
+    credentialIdFinal = ''
+  } else {
+    if (!bmcAddressFinal) {
+      ElMessage.warning('请填写 BMC 地址')
+      return
+    }
+    if (credMode.value === 'new' && (!credName.value.trim() || !credUser.value || !credPass.value)) {
+      ElMessage.warning('请填写新凭证的名称、用户名与密码')
+      return
+    }
+    if (credMode.value === 'existing' && !credentialIdFinal) {
+      ElMessage.warning('请填写已有凭证 ID（cred_…）')
+      return
+    }
+    if (credMode.value === 'new') {
+      credentialIdFinal = await createCredential()
+    }
   }
   submitting.value = true
   try {
-    let credentialId = credId.value.trim()
-    if (credMode.value === 'new') {
-      credentialId = await createCredential()
-    }
     const body: components['schemas']['MachineCreate'] = {
       labels: labels.value,
       bmc: {
-        address: bmcAddress.value.trim(),
+        address: bmcAddressFinal,
         protocol: protocol.value,
-        credential_id: credentialId as components['schemas']['CredentialId'],
+        credential_id: credentialIdFinal as components['schemas']['CredentialId'],
       },
     }
     if (useSsh.value && sshCredId.value.trim()) {
@@ -164,18 +189,28 @@ async function submit() {
       title="认领 = 补齐 BMC 寻址与凭证， sighting 的固件观测与探针报告会迁移到新机器"
     />
     <el-form label-position="top" @submit.prevent="submit">
-      <el-form-item label="BMC 地址（host 或 host:port）">
-        <el-input v-model="bmcAddress" placeholder="203.0.113.10 或 203.0.113.10:443" class="mono" />
-      </el-form-item>
       <el-form-item label="带外协议">
         <el-radio-group v-model="protocol">
           <el-radio-button value="auto">自动（Redfish→IPMI）</el-radio-button>
           <el-radio-button value="redfish">Redfish</el-radio-button>
           <el-radio-button value="ipmi">IPMI</el-radio-button>
           <el-radio-button value="fake">fake（演示）</el-radio-button>
+          <el-radio-button value="none">无带外（headless）</el-radio-button>
         </el-radio-group>
       </el-form-item>
 
+      <el-form-item v-if="isHeadless" label="装机网卡 MAC（机器身份，装机走 PXE + WoL/人工上电）">
+        <el-input v-model="headlessMac" placeholder="AA:BB:CC:DD:EE:01" class="mono" />
+        <div class="hint" style="margin-top: 4px">
+          无带外机器以合成地址 none://&lt;mac&gt; 注册；装机构网段需 PXE 可达，
+          关机唤醒依赖 WoL（跨网段需引擎侧 edge 代发）或人工上电兜底。
+        </div>
+      </el-form-item>
+      <el-form-item v-else label="BMC 地址（host 或 host:port）">
+        <el-input v-model="bmcAddress" placeholder="203.0.113.10 或 203.0.113.10:443" class="mono" />
+      </el-form-item>
+
+      <template v-if="!isHeadless">
       <el-form-item label="BMC 凭证">
         <el-radio-group v-model="credMode">
           <el-radio-button value="new">新建凭证</el-radio-button>
@@ -240,6 +275,7 @@ async function submit() {
           </el-form-item>
         </el-collapse-item>
       </el-collapse>
+      </template>
 
       <el-form-item label="标签" class="label-item">
         <el-input

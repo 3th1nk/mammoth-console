@@ -1799,8 +1799,29 @@ export interface components {
                 id?: string;
                 /** @description e.g. `sha256:9f86d0...`. With id, defaults to the registration's digest; a conflicting explicit checksum is rejected at submit. */
                 checksum?: string;
-                /** @description Explicitly declared (no implicit detection), e.g. rocky9. */
+                /**
+                 * @description Explicitly declared (no implicit detection), e.g. rocky9.
+                 *     The special key `dd` selects the image-direct-write pathway
+                 *     (docs/09「镜像直写通路」): the spec's image is a pre-built
+                 *     whole-disk image streamed onto exactly one target disk by the
+                 *     agent initramfs — PXE-only; checksum required; the image owns
+                 *     the partition table, so partitions/lvm/raid/identity/network
+                 *     intent is honestly rejected with 422.
+                 */
                 distro: string;
+                /**
+                 * @description dd pathway only: the image's compression. raw = uncompressed;
+                 *     raw.gz = gzip (busybox gunzip inline — the runtime decompresses
+                 *     on the fly while streaming to disk; the RECOMMENDED delivery —
+                 *     zero extra dependencies); raw.xz = xz (needs the alpine
+                 *     extended pool staged for the apk xz package — the engine gates
+                 *     it at prepare). The checksum is always the UNCOMPRESSED
+                 *     image's sha256 (the stream that hits the disk is verified
+                 *     byte-for-byte). Other distros reject the field.
+                 * @default raw
+                 * @enum {string}
+                 */
+                format: "raw" | "raw.gz" | "raw.xz";
                 /**
                  * @description Windows only: explicit /IMAGE/NAME inside install.wim for the
                  *     unattend's image selection, overriding the driver default
