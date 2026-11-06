@@ -5,7 +5,7 @@
  */
 export type DistroFamilyKey =
   | 'rocky' | 'centos' | 'kylin' | 'uos' | 'ubuntu'
-  | 'debian' | 'windows' | 'alpine' | 'generic'
+  | 'debian' | 'windows' | 'alpine' | 'dd' | 'generic'
 
 const RULES: Array<[RegExp, DistroFamilyKey]> = [
   [/rocky/, 'rocky'],
@@ -16,12 +16,15 @@ const RULES: Array<[RegExp, DistroFamilyKey]> = [
   [/debian/, 'debian'],
   [/win/, 'windows'],
   [/alpine/, 'alpine'],
+  // 镜像直写通路(distro=dd,docs/09):独立族,优先于 generic
+  [/^dd$/, 'dd'],
 ]
 
 const FAMILY_FALLBACK: Partial<Record<string, DistroFamilyKey>> = {
   autoinstall: 'ubuntu',
   preseed: 'debian',
   agent: 'windows',
+  dd: 'dd',
 }
 
 export function resolveDistroKey(name?: string, family?: string): DistroFamilyKey {
@@ -41,6 +44,7 @@ export const FAMILY_LABELS: Record<DistroFamilyKey, string> = {
   debian: 'Debian',
   windows: 'Windows Server',
   alpine: 'Alpine（探针）',
+  dd: '镜像直写',
   generic: '其他',
 }
 

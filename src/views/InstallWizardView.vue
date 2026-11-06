@@ -1222,18 +1222,17 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 
         <el-form-item label="发行版" required>
           <el-select v-model="distroChoice" placeholder="选择发行版" style="width: 320px">
-            <el-option v-for="d in distros" :key="d.name" :value="d.name" :label="d.name">
+            <el-option v-for="d in distros" :key="d.name" :value="d.name" :label="d.name === 'dd' ? '镜像直写（dd）' : d.name">
               <span style="display: inline-flex; align-items: center; gap: 8px">
                 <DistroBadge :name="d.name" :family="d.family" />
-                {{ d.name }}
-                <span class="text-muted" style="font-size: 12px">{{ d.family }}</span>
+                {{ d.name === 'dd' ? '镜像直写（dd）' : d.name }}
+                <span class="text-muted" style="font-size: 12px">{{ d.name === 'dd' ? '整盘镜像 → 目标盘' : d.family }}</span>
               </span>
             </el-option>
           </el-select>
           <div v-if="autoDistroHint" class="hint" style="color: #67c23a">{{ autoDistroHint }}</div>
           <div v-if="distroChoice" class="hint">
-            {{ distros.find((d) => d.name === distroChoice)?.family }} 方言 ·
-            保留分区 {{ KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—' }}
+            {{ distroChoice === 'dd' ? '镜像直写通路 · 整盘镜像流式写盘 + NoCloud seed 首启 · PXE-only' : distros.find((d) => d.name === distroChoice)?.family + ' 方言 · 保留分区 ' + (KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—') }}
           </div>
         </el-form-item>
 
