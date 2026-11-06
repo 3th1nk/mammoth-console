@@ -197,7 +197,10 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
         </el-form-item>
         <el-form-item label="SHA256" required>
           <el-input v-model="reg.sha256" placeholder="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" class="mono" />
-          <div class="hint">引擎按它做拉取门禁：不符即弃、不落缓存。发行版与版本留空时，拉取完成后自动识别。</div>
+          <div class="hint">
+            引擎按它做拉取门禁：不符即弃、不落缓存。发行版与版本留空时，拉取完成后自动识别。
+            整盘镜像（直写通路 dd）无 ISO 结构、不会被识别——注册时请显式填 distro=<code>dd</code>。
+          </div>
         </el-form-item>
         <el-row :gutter="10">
           <el-col :span="12">
