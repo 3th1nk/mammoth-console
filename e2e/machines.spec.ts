@@ -16,7 +16,7 @@ test.describe('机器生命周期', () => {
     const dlg = page.locator('.el-dialog').filter({ hasText: '注册' }).first()
     await dlg.getByPlaceholder(/203\.0\.113\.10/).fill(BMC)
     // el-radio-button 的真实 radio input 是隐藏的,点可视 label
-    await dlg.locator('.el-radio-button').filter({ hasText: 'fake' }).click()
+    await dlg.locator('.el-radio-button').filter({ hasText: '演示' }).click()
     await dlg.locator('.el-radio-button').filter({ hasText: '新建凭证' }).click()
     await dlg.getByPlaceholder(/bmc-rack01/).fill(CRED)
     await dlg.getByLabel('用户名').fill('admin')

@@ -96,7 +96,7 @@ const distroChoice = computed({
 const isWindows = computed(() => spec.image.distro.toLowerCase().includes('win'))
 // 镜像直写通路(image.distro=dd,docs/09「镜像直写通路」):整盘镜像流式写盘
 const isDD = computed(() => spec.image.distro === 'dd')
-// headless 目标(protocol=none):装机构网段需 PXE,boot 强制 pxe;
+// headless 目标(protocol=none):装机网段需 PXE,boot 强制 pxe;
 // 引导等待窗(boot.evidence_wait_seconds)默认引擎值 10m
 const headlessTargets = computed(() => readyTargets.value.filter((r) => (r.machine as any).bmc?.protocol === 'none'))
 const hasHeadlessTarget = computed(() => headlessTargets.value.length > 0)

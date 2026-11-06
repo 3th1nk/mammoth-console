@@ -37,6 +37,13 @@ function headlessAddress(): string {
   const colon = norm.replace(/(..)(..)(..)(..)(..)(..)/, '$1:$2:$3:$4:$5:$6')
   return 'none://' + colon
 }
+// 认领提示随协议切换：无带外没有 BMC 可补，认领即确认按无带外登记
+// （引擎要求 claim 显式带 protocol=none，docs/13-headless-design.md §3.1）。
+const claimTip = computed(() =>
+  isHeadless.value
+    ? '认领 = 按无带外机器登记（以该 MAC 为身份，无需 BMC 寻址与凭证），sighting 的固件观测与探针报告会迁移到新机器'
+    : '认领 = 补齐 BMC 寻址与凭证，sighting 的固件观测与探针报告会迁移到新机器',
+)
 const credMode = ref<'new' | 'existing'>('new')
 const credName = ref('')
 const credUser = ref('')
@@ -62,7 +69,9 @@ watch(visible, (v) => {
   if (v) {
     bmcAddress.value = ''
     protocol.value = 'auto'
-    headlessMac.value = ''
+    // 认领时身份 MAC 即 sighting 的 MAC：引擎 claim 会把地址改写成
+    // none://<该 MAC>，表单里改了也不生效——预填并锁定，免手填。
+    headlessMac.value = props.claimMac ?? ''
     credMode.value = 'new'
     credName.value = ''
     credUser.value = ''
@@ -186,7 +195,7 @@ async function submit() {
       :closable="false"
       show-icon
       class="mb"
-      title="认领 = 补齐 BMC 寻址与凭证， sighting 的固件观测与探针报告会迁移到新机器"
+      :title="claimTip"
     />
     <el-form label-position="top" @submit.prevent="submit">
       <el-form-item label="带外协议">
@@ -194,16 +203,17 @@ async function submit() {
           <el-radio-button value="auto">自动（Redfish→IPMI）</el-radio-button>
           <el-radio-button value="redfish">Redfish</el-radio-button>
           <el-radio-button value="ipmi">IPMI</el-radio-button>
-          <el-radio-button value="fake">fake（演示）</el-radio-button>
-          <el-radio-button value="none">无带外（headless）</el-radio-button>
+          <el-radio-button value="fake">演示</el-radio-button>
+          <el-radio-button value="none">无带外</el-radio-button>
         </el-radio-group>
       </el-form-item>
 
       <el-form-item v-if="isHeadless" label="装机网卡 MAC（机器身份，装机走 PXE + WoL/人工上电）">
-        <el-input v-model="headlessMac" placeholder="AA:BB:CC:DD:EE:01" class="mono" />
+        <el-input v-model="headlessMac" placeholder="AA:BB:CC:DD:EE:01" class="mono" :disabled="!!claimMac" />
         <div class="hint" style="margin-top: 4px">
-          无带外机器以合成地址 none://&lt;mac&gt; 注册；装机构网段需 PXE 可达，
-          关机唤醒依赖 WoL（跨网段需引擎侧 edge 代发）或人工上电兜底。
+          <div v-if="claimMac">已取自该机器 PXE 引导时上报的 MAC（引擎认领以此为身份，不可改）。</div>
+          无带外机器以合成地址 none://&lt;mac&gt; 注册；装机网段需 PXE 可达，关机唤醒依赖
+          WoL（跨网段需引擎侧 edge 代发）或人工上电兜底。
         </div>
       </el-form-item>
       <el-form-item v-else label="BMC 地址（host 或 host:port）">
