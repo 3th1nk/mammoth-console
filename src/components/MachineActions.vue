@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import EraseDrivesDialog from './EraseDrivesDialog.vue'
 import BiosDialog from './BiosDialog.vue'
+import RescueDialog from './RescueDialog.vue'
 import { getClient } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/problem'
 import type { components } from '@/api/types.gen'
@@ -35,6 +36,8 @@ const mediaUrl = ref('')
 const ejectAfter = ref(false)
 const eraseDialog = ref(false)
 const biosDialog = ref(false)
+const rescueDialog = ref(false)
+const decommissionBusy = ref(false)
 
 const POWER_CONFIRM: Record<string, string> = {
   power_off: '硬关机不等操作系统落盘，可能丢失数据。确定执行？',
@@ -99,6 +102,13 @@ function onCommand(cmd: string) {
     biosDialog.value = true
     return
   }
+  if (cmd === 'rescue') {
+    rescueDialog.value = true
+    return
+  }
+  if (cmd === 'decommission') {
+    return void decommission()
+  }
   if (cmd === 'install') {
     router.push({ name: 'install-wizard', query: { machines: props.machineId } })
     return
@@ -124,6 +134,47 @@ function onCommand(cmd: string) {
       return void submit({ type: 'eject_media' }, POWER_CONFIRM['eject_media'])
     case 'discover':
       return void submit({ type: 'discover', probe: 'auto' })
+  }
+}
+
+// 退役 = 全盘 NIST 800-88 擦除 + 证据落档 + retired 终态(docs/07-bmc.md
+// §6.6):confirm 是唯一门禁,擦盘不可回滚。机器进入 retired 后对
+// 装机/救援/退役一律 422,复投 = 重新盘查。
+async function decommission() {
+  try {
+    await ElMessageBox.confirm(
+      '退役将对该机器的每一块盘执行 NIST 800-88 安全擦除(数据不可恢复),采集退役证据后将机器标记为 retired。确定执行?',
+      `退役 ${props.machineId}`,
+      { type: 'error', confirmButtonText: '确认退役(全盘擦除)', cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger' },
+    )
+  } catch {
+    return
+  }
+  decommissionBusy.value = true
+  try {
+    const data = await unwrap(await getClient().POST('/api/v1/jobs', {
+      header: { 'Idempotency-Key': uuid() },
+      body: {
+        type: 'decommission',
+        targets: { targets: [{ machine_id: props.machineId }] },
+        confirm: true,
+      } as never,
+    }))
+    const jobId = (data as components['schemas']['Job'] | undefined)?.id
+    ElNotification.success({
+      title: '退役已受理',
+      message: jobId ? `退役任务 ${jobId} 已创建，点击查看进度` : '退役任务已受理',
+      onClick: () => {
+        if (jobId) router.push({ name: 'job-detail', params: { id: jobId } })
+      },
+      duration: 6000,
+    })
+    emit('submitted')
+  } catch (e) {
+    ElMessage.error(errorMessage(e))
+  } finally {
+    decommissionBusy.value = false
   }
 }
 
@@ -206,6 +257,8 @@ function submitMedia() {
             <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
             <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
             <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
+            <el-dropdown-item divided command="rescue">救援模式…</el-dropdown-item>
+            <el-dropdown-item command="decommission">退役(全盘擦除)…</el-dropdown-item>
             <el-dropdown-item command="install">重装系统…</el-dropdown-item>
             <el-dropdown-item divided command="deregister" class="deregister-item">注销机器…</el-dropdown-item>
           </el-dropdown-menu>
@@ -232,6 +285,8 @@ function submitMedia() {
           <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
           <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
           <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
+          <el-dropdown-item divided command="rescue">救援模式…</el-dropdown-item>
+          <el-dropdown-item command="decommission">退役（全盘擦除）…</el-dropdown-item>
           <el-dropdown-item divided command="install">重装系统…</el-dropdown-item>
           <el-dropdown-item divided command="deregister" class="deregister-item">注销机器…</el-dropdown-item>
         </el-dropdown-menu>
@@ -264,6 +319,7 @@ function submitMedia() {
 
   <EraseDrivesDialog v-model="eraseDialog" :machine-id="machineId" />
   <BiosDialog v-model="biosDialog" :machine-id="machineId" />
+  <RescueDialog v-model="rescueDialog" :machine-id="machineId" />
 
   <el-dialog v-model="mediaDialog" title="挂载虚拟介质" width="500px" @click.stop>
     <el-form label-width="90px">

@@ -39,6 +39,7 @@ const machines = ref<Item[]>([])
 const JOB_LABEL: Record<string, string> = {
   install: '安装', discover: '盘查', power: '电源动作', erase_drives: '擦盘',
   set_bios_attributes: 'BIOS 修改', configure_raid: 'RAID 配置',
+  rescue: '救援模式', decommission: '退役(全盘擦除)',
 }
 
 function jobItem(j: { id: string; type: string; state: string; machine_ids?: string[] }): Item {

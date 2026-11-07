@@ -14,6 +14,7 @@ export const RESOURCE_TYPE_LABEL: Record<string, string> = {
   pending: '待认领',
   webhook: 'Webhook',
   image: '镜像',
+  bios_profile: 'BIOS 基线',
 }
 
 export const EVENT_TYPE_LABEL: Record<string, string> = {
@@ -59,6 +60,20 @@ export const EVENT_TYPE_LABEL: Record<string, string> = {
   // image
   'image.ready': '镜像就绪',
   'image.failed': '镜像拉取失败',
+  // rescue(decommission/rescue 轮,docs/07-bmc.md §6.5/6.6)
+  'task.boot_rescue': '救援系统就绪',
+  'task.rescue_reported': '救援报告上报',
+  // decommission
+  'task.decommission_evidence': '退役证据落档',
+  'machine.retired': '机器退役',
+  // acceptance(装后验收,roadmap 下一阶段 12)
+  'task.acceptance_reported': '装后验收报告',
+  // BIOS 基线/漂移(roadmap 下一阶段 13)
+  'bios_profile_created': 'BIOS 基线创建',
+  'bios_profile_deleted': 'BIOS 基线删除',
+  'bios_profile_applied': 'BIOS 基线批量下发',
+  'machine.bios_baseline_set': 'BIOS 基线赋值',
+  'machine.bios_drift_checked': 'BIOS 漂移巡检',
 }
 
 /** 中文显示名;未映射类型回落原文(additive 兼容)。 */
