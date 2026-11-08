@@ -20,6 +20,7 @@ export const router = createRouter({
         { path: 'pending', name: 'pending', component: () => import('@/views/PendingView.vue') },
         { path: 'images', name: 'images', component: () => import('@/views/ImagesView.vue') },
         { path: 'credentials', name: 'credentials', component: () => import('@/views/CredentialsView.vue') },
+        { path: 'bios-profiles', name: 'bios-profiles', component: () => import('@/views/BiosProfilesView.vue') },
         { path: 'install', name: 'install-wizard', component: () => import('@/views/InstallWizardView.vue') },
         { path: 'jobs', name: 'jobs', component: () => import('@/views/JobsView.vue') },
         { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },

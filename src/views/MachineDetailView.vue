@@ -69,6 +69,90 @@ const selQuery = useQuery({
     ),
 })
 
+// 装后验收报告（roadmap 下一阶段 12）：持久化读——无报告 = null（不 404）。
+const acceptanceQuery = useQuery({
+  queryKey: computed(() => ['machine-acceptance', props.id]),
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/machines/{id}/acceptance', { params: { path: { id: props.id } } })),
+})
+const acceptance = computed(() => acceptanceQuery.data.value?.report ?? null)
+const VERDICT_META: Record<string, { label: string; type: 'success' | 'warning' | 'danger' }> = {
+  pass: { label: '通过', type: 'success' },
+  degraded: { label: '降级', type: 'warning' },
+  fail: { label: '不符', type: 'danger' },
+}
+const CHECK_LABEL: Record<string, string> = {
+  system_facts: '系统事实',
+  hostname: '主机名',
+  storage_mounts: '存储挂载',
+  boot_cmdline: '引导行',
+}
+
+// 退役证据（roadmap 下一阶段 18）：退役时落档（擦除记录/固件/SEL/BIOS 快照）。
+const dcQuery = useQuery({
+  queryKey: computed(() => ['machine-decommission', props.id]),
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/machines/{id}/decommission', { params: { path: { id: props.id } } })),
+})
+const dcReport = computed(() => dcQuery.data.value?.report ?? null)
+
+// BIOS 基线 + 漂移（roadmap 下一阶段 13）：drift 读 = 按钮触发的活 BMC 读。
+const biosBaseline = computed(() => machine.value?.bios_profile_id ?? null)
+const profilesQuery = useQuery({
+  queryKey: ['bios-profiles-list'],
+  queryFn: async () =>
+    unwrap(await getClient().GET('/api/v1/bios-profiles')).then((d) => d?.items ?? []),
+})
+const profileName = computed(() => {
+  const pid = biosBaseline.value
+  if (!pid) return ''
+  return profilesQuery.data.value?.find((p) => p.id === pid)?.name ?? pid
+})
+const driftEnabled = computed(() => !!biosBaseline.value)
+const driftReading = ref(false)
+const driftData = ref<components['schemas']['BiosDriftView'] | null>(null)
+const driftedEntries = computed(() => Object.entries(driftData.value?.drift?.drifted ?? {}))
+
+const selectedProfileId = ref('')
+async function assignBaseline() {
+  if (!selectedProfileId.value) return
+  try {
+    await unwrap(await getClient().PUT('/api/v1/machines/{id}/bios/baseline', {
+      params: { path: { id: props.id } },
+      body: { profile_id: selectedProfileId.value },
+    }))
+    ElMessage.success(`基线已赋值：${profilesQuery.data.value?.find((p) => p.id === selectedProfileId.value)?.name ?? selectedProfileId.value}`)
+    selectedProfileId.value = ''
+    void profilesQuery.refetch()
+  } catch (e) {
+    ElMessage.error(errorMessage(e))
+  }
+}
+async function clearBaseline() {
+  try {
+    await unwrap(await getClient().PUT('/api/v1/machines/{id}/bios/baseline', {
+      params: { path: { id: props.id } },
+      body: { profile_id: null },
+    }))
+    ElMessage.success('基线赋值已清除')
+    driftData.value = null
+  } catch (e) {
+    ElMessage.error(errorMessage(e))
+  }
+}
+async function driftRead() {
+  driftReading.value = true
+  try {
+    driftData.value = await unwrap(
+      await getClient().GET('/api/v1/machines/{id}/bios/drift', { params: { path: { id: props.id } } }),
+    )
+  } catch (e) {
+    ElMessage.error(errorMessage(e))
+  } finally {
+    driftReading.value = false
+  }
+}
+
 // KVM：一次性 URL 端点；真机多数控制器不支持（502 BMC_UNSUPPORTED），按能力降级提示
 const kvmLoading = ref(false)
 async function openKvm() {
@@ -318,6 +402,114 @@ const title = computed(() => {
           <template #empty>无固件清单（IPMI 协议或尚未盘查）</template>
         </el-table>
       </el-card>
+
+      <!-- BIOS 基线与漂移（roadmap 下一阶段 13）：赋值在操作下拉「BIOS 基线…」 -->
+      <el-card shadow="never" class="mb">
+        <template #header>
+          <div class="card-head">
+            <span>BIOS 基线与漂移</span>
+            <el-button size="small" :icon="Refresh" :disabled="!driftEnabled" :loading="driftReading" @click="driftRead()">
+              读取漂移
+            </el-button>
+          </div>
+        </template>
+        <div v-if="!driftEnabled" class="text-muted" style="font-size: 13px">
+          未赋值基线——在操作下拉「BIOS 基线…」赋值后，这里对照基线读出漂移（matched / drifted / unknown）。
+        </div>
+        <template v-else>
+          <div class="bios-baseline-line">
+            <span class="text-muted" style="font-size: 13px">当前基线</span>
+            <el-tag effect="plain">{{ profileName }}</el-tag>
+            <el-select
+              v-model="selectedProfileId"
+              size="small"
+              placeholder="换一个基线…"
+              style="width: 220px"
+            >
+              <el-option
+                v-for="p in profilesQuery.data.value ?? []"
+                :key="p.id"
+                :label="p.name"
+                :value="p.id"
+              />
+            </el-select>
+            <el-button size="small" @click="assignBaseline" :disabled="!selectedProfileId">赋值</el-button>
+            <el-button size="small" text type="danger" @click="clearBaseline">清除</el-button>
+          </div>
+          <template v-if="driftData?.drift">
+            <div class="drift-summary">
+              <el-tag type="success" effect="plain">匹配 {{ driftData.drift.matched }}</el-tag>
+              <el-tag v-if="driftData.drift.drifted" type="warning" effect="plain">
+                漂移 {{ Object.keys(driftData.drift.drifted).length }}
+              </el-tag>
+              <el-tag v-if="driftData.drift.unknown?.length" type="danger" effect="plain">
+                未知 {{ driftData.drift.unknown.length }}
+              </el-tag>
+            </div>
+            <el-table v-if="driftedEntries.length" :data="driftedEntries" size="small" class="mb-inner">
+              <el-table-column prop="0" label="属性" min-width="180">
+                <template #default="{ row }"><span class="mono">{{ row[0] }}</span></template>
+              </el-table-column>
+              <el-table-column label="基线值" min-width="140">
+                <template #default="{ row }"><span class="mono">{{ JSON.stringify(row[1][0]) }}</span></template>
+              </el-table-column>
+              <el-table-column label="活值" min-width="140">
+                <template #default="{ row }"><span class="mono">{{ JSON.stringify(row[1][1]) }}</span></template>
+              </el-table-column>
+            </el-table>
+            <div v-if="driftData.drift.unknown?.length" class="drift-unknown">
+              活表没有的基线属性：{{ driftData.drift.unknown.join('、') }}（基线先于 BIOS 升级，或属性名笔误）
+            </div>
+          </template>
+          <div v-else-if="driftReading" class="text-muted" style="font-size: 13px">BMC 活读中…</div>
+        </template>
+      </el-card>
+
+      <!-- 装后验收报告（roadmap 下一阶段 12）：有报告才显示 -->
+      <el-card v-if="acceptance" shadow="never" class="mb">
+        <template #header>
+          <div class="card-head">
+            <span>装后验收报告</span>
+            <el-tag :type="VERDICT_META[acceptance.verdict]?.type ?? 'info'" effect="dark">
+              {{ VERDICT_META[acceptance.verdict]?.label ?? acceptance.verdict }}
+            </el-tag>
+          </div>
+        </template>
+        <el-table :data="acceptance.checks ?? []" size="small" class="mb-inner">
+          <el-table-column label="检查项" width="140">
+            <template #default="{ row }">{{ CHECK_LABEL[row.name] ?? row.name }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="110">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.status === 'ok' ? 'success' : row.status === 'mismatch' ? 'danger' : 'warning'"
+                effect="plain"
+              >
+                {{ row.status === 'ok' ? '符合' : row.status === 'mismatch' ? '不符' : '无数据' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="详情" min-width="260">
+            <template #default="{ row }"><span class="mono" style="font-size: 12px">{{ row.detail || '—' }}</span></template>
+          </el-table-column>
+        </el-table>
+        <div v-if="acceptance.system" class="system-facts">
+          <span class="text-muted" style="font-size: 13px">
+            {{ acceptance.system.os }} · 内核 {{ acceptance.system.kernel }} · 主机名 {{ acceptance.system.hostname }}
+          </span>
+        </div>
+      </el-card>
+
+      <!-- 退役证据（roadmap 下一阶段 18）：有报告才显示 -->
+      <el-card v-if="dcReport" shadow="never" class="mb">
+        <template #header>
+          <div class="card-head">
+            <span>退役证据</span>
+            <el-tag effect="plain">已退役资产</el-tag>
+          </div>
+        </template>
+        <pre class="dc-pre">{{ JSON.stringify(dcReport, null, 2) }}</pre>
+      </el-card>
     </template>
   </div>
 </template>
@@ -352,5 +544,32 @@ const title = computed(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
+}
+.bios-baseline-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.drift-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.drift-unknown {
+  font-size: 12px;
+  color: var(--el-color-danger);
+  margin-top: 8px;
+}
+.system-facts {
+  margin-top: 10px;
+}
+.dc-pre {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

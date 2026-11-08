@@ -124,6 +124,9 @@ function copyPassword() {
         <el-menu-item index="/credentials">
           <el-icon><Key /></el-icon>凭证
         </el-menu-item>
+        <el-menu-item index="/bios-profiles">
+          <el-icon><Cpu /></el-icon>BIOS 基线
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>设置
         </el-menu-item>
