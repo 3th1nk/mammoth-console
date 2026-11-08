@@ -956,6 +956,7 @@ async function submit() {
       params: { header: { 'Idempotency-Key': uuid() } },
       body: {
         type: 'install',
+        confirm: false,
         targets: {
           targets: readyTargets.value.map((r) => {
             const vars = machineVars(r.machine.id)

@@ -259,6 +259,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bios-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List BIOS baseline profiles */
+        get: operations["listBiosProfiles"];
+        put?: never;
+        /**
+         * Create a BIOS baseline profile
+         * @description A named declarative BIOS attribute set (docs/07-bmc.md §6.1): the
+         *     drift-inspection reference and the batch apply's payload source.
+         *     Attributes use the vendor's own names and JSON types — the same
+         *     shape set_bios_attributes carries (unknown names surface as drift
+         *     "unknown", rejected at apply time by the runner's live table).
+         */
+        post: operations["createBiosProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bios-profiles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["profileId"];
+            };
+            cookie?: never;
+        };
+        /** Fetch one profile */
+        get: operations["getBiosProfile"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a profile
+         * @description Machine assignments clear (ON DELETE SET NULL) — nothing dangles.
+         */
+        delete: operations["deleteBiosProfile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bios-profiles/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["profileId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fan the profile's attributes out as one batch job
+         * @description Creates ONE power job with one set_bios_attributes task per target
+         *     machine — the two-stage confirmation contract applies unchanged
+         *     (confirm:true required by the default policy; the runner re-reads
+         *     each machine's live attribute table and rejects unknown names).
+         *     machine_ids absent → every machine assigned to the profile.
+         */
+        post: operations["applyBiosProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/machines/{id}/bios/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign (or clear) the machine's BIOS baseline profile
+         * @description body {profile_id: "..."} assigns; {profile_id: null} clears. The
+         *     profile must exist.
+         */
+        put: operations["setMachineBiosBaseline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/machines/{id}/bios/drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Live BIOS attributes held against the assigned baseline
+         * @description Synchronous BMC read (BiosSetter) compared against the assigned
+         *     profile — the runner's own write semantics on the read side: equal
+         *     values count matched, differing values list drifted (declared vs
+         *     live), unknown names surface as unknown. No baseline assigned ->
+         *     {"drift": null}.
+         */
+        get: operations["getMachineBiosDrift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/machines/{id}/bios": {
         parameters: {
             query?: never;
@@ -291,11 +414,62 @@ export interface paths {
         /**
          * Live physical drive table of the controller
          * @description Reads the storage controller's physical drives synchronously (the
-         *     same out-of-band path the actions use; docs/07-bmc.md §6.2). Serials
+         *     same out-of-band path the actions use; docs/07-bmc.md §6.3). Serials
          *     here are the identity erase_drives consumes — read first, erase
          *     second.
          */
         get: operations["getMachineDrives"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/machines/{id}/acceptance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest post-install acceptance report
+         * @description The newest post-install acceptance report (docs/06-install-pipeline.md
+         *     §5, docs/09-roadmap.md 下一阶段 12): the freshly installed system's
+         *     collected facts held against the declared intent — hostname, declared
+         *     mounts, system identity (kernel / os / /proc/cmdline). Evidence,
+         *     never a gate: verdict pass | degraded | fail degrades on facts
+         *     unavailable; the install outcome is verify_ready's business. null
+         *     until the machine's first in-band-verified install.
+         */
+        get: operations["getMachineAcceptance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/machines/{id}/decommission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest decommission evidence report
+         * @description The newest decommission report (docs/07-bmc.md §6.6, docs/09-roadmap.md
+         *     下一阶段 18): what was erased (serials + the controller's own reported
+         *     sanitization mechanisms), and what the machine looked like at
+         *     retirement — firmware inventory, SEL tail, BIOS snapshot, identity
+         *     facts. Evidence for the asset ledger; the retired state itself rides
+         *     the machine's state field. Reinstatement is a fresh discover.
+         */
+        get: operations["getMachineDecommission"];
         put?: never;
         post?: never;
         delete?: never;
@@ -314,7 +488,7 @@ export interface paths {
         /**
          * Live health snapshot of the controller
          * @description Samples the controller's sensors synchronously (the same
-         *     out-of-band path the actions use; docs/07-bmc.md §6.3): fans,
+         *     out-of-band path the actions use; docs/07-bmc.md §6.4): fans,
          *     temperatures, power supplies, voltages — each with a health state —
          *     plus the chassis power state and the overall verdict (worst of all
          *     reported states; unreadable sensors are unknown, never a
@@ -340,7 +514,7 @@ export interface paths {
         /**
          * Live system event log of the controller
          * @description Reads the controller's system event log synchronously (docs
-         *     07-bmc.md §6.3) — the rescue-room record of what happened before
+         *     07-bmc.md §6.5) — the rescue-room record of what happened before
          *     the OS died. Newest first, capped at the 500 most recent records.
          *     Requires a controller with the SEL capability (redfish); others
          *     answer BMC_UNSUPPORTED.
@@ -1029,6 +1203,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         CredentialId: string;
+        ProfileId: string;
         MachineId: string;
         JobId: string;
         TaskId: string;
@@ -1160,7 +1335,7 @@ export interface components {
         /** @enum {string} */
         PowerState: "on" | "off" | "unknown";
         /** @enum {string} */
-        MachineState: "registering" | "discovering" | "ready" | "error";
+        MachineState: "registering" | "discovering" | "ready" | "error" | "retired";
         /**
          * @description The required keys must be present for every protocol; for `none`
          *     their values are the headless identity — `address` is
@@ -1282,6 +1457,8 @@ export interface components {
             firmware?: components["schemas"]["FirmwareInventory"] | null;
             power_state: components["schemas"]["PowerState"];
             state: components["schemas"]["MachineState"];
+            /** @description Assigned BIOS baseline profile (docs/07-bmc.md §6.1); null = unassigned. */
+            bios_profile_id?: string | null;
             last_error?: components["schemas"]["ErrorInfo"] | null;
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
@@ -1379,6 +1556,86 @@ export interface components {
             medium?: string;
             protocol?: string;
         };
+        /** @description Wrapper — the machine's latest decommission report (null when none). */
+        DecommissionView: {
+            /** @description The retirement record: machine identity, the erase record (serials + mechanisms), firmware inventory / SEL tail / BIOS snapshot (each null-shaped when the controller lacked the capability). */
+            report?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** @description Wrapper — the machine's latest acceptance report (null when none). */
+        AcceptanceView: {
+            report?: components["schemas"]["AcceptanceReport"];
+        };
+        /**
+         * @description The post-install validation record (docs/06-install-pipeline.md §5):
+         *     collected facts held against the declared intent. Evidence, never a
+         *     gate.
+         */
+        AcceptanceReport: {
+            task_id: string;
+            /** @enum {string} */
+            verdict: "pass" | "degraded" | "fail";
+            checks: components["schemas"]["AcceptanceCheck"][];
+            /** @description Captured system facts (hostname / kernel / cmdline / timezone / os / uptime). */
+            system?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            captured_at: string;
+        };
+        AcceptanceCheck: {
+            /** @enum {string} */
+            name: "system_facts" | "hostname" | "storage_mounts" | "boot_cmdline";
+            /** @enum {string} */
+            status: "ok" | "mismatch" | "unavailable";
+            detail?: string;
+        };
+        BiosProfileCreate: {
+            name: string;
+            /** @description Attribute names per the controller's own registry; values keep the vendor's JSON types. */
+            attributes: {
+                [key: string]: unknown;
+            };
+        };
+        BiosProfile: {
+            id: string;
+            name: string;
+            attributes: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        BiosProfileApply: {
+            /** @description Explicit targets; absent = every machine assigned to the profile. */
+            machine_ids?: string[];
+            /**
+             * @description Explicit high-risk confirmation; required by the default policy.
+             * @default false
+             */
+            confirm: boolean;
+        };
+        BiosBaselineSet: {
+            /** @description The profile to assign; null clears the assignment. */
+            profile_id: string | null;
+        };
+        /** @description Wrapper — the machine's drift verdict (null without an assigned baseline). */
+        BiosDriftView: {
+            drift?: components["schemas"]["BiosDrift"];
+        };
+        BiosDrift: {
+            /** @description Baseline entries equal on the live table. */
+            matched: number;
+            /** @description Baseline entries whose live value differs — name → [declared, live]. */
+            drifted?: {
+                [key: string]: unknown[];
+            } | null;
+            /** @description Baseline names the live table doesn't carry. */
+            unknown?: string[] | null;
+        };
         HealthView: {
             power_state?: components["schemas"]["PowerState"];
             /**
@@ -1422,7 +1679,7 @@ export interface components {
         };
         /**
          * @description Issue the controller's secure erase on physical drives — NIST 800-88
-         *     media sanitization at the controller level (docs/07-bmc.md §6.2).
+         *     media sanitization at the controller level (docs/07-bmc.md §6.3).
          *     THE MOST DESTRUCTIVE ACTION IN THE CONTRACT: data is unrecoverable
          *     by design. Two-stage confirmation applies — the explicit confirm
          *     flag unless the deployment sets MAMMOTH_ERASE_CONFIRM=optional, and
@@ -1469,7 +1726,42 @@ export interface components {
              */
             confirm: boolean;
         };
-        ActionRequest: components["schemas"]["ActionDiscover"] | components["schemas"]["ActionPowerOn"] | components["schemas"]["ActionPowerOff"] | components["schemas"]["ActionSoftOff"] | components["schemas"]["ActionReboot"] | components["schemas"]["ActionHardReboot"] | components["schemas"]["ActionCycle"] | components["schemas"]["ActionSetBootDevice"] | components["schemas"]["ActionMountMedia"] | components["schemas"]["ActionEjectMedia"] | components["schemas"]["ActionSetBiosAttributes"] | components["schemas"]["ActionEraseDrives"];
+        /**
+         * @description Boot the machine into the engine's in-memory rescue system — an alpine
+         *     RAM OS with an SSH daemon, no disks touched and no install steps run
+         *     (docs/07-bmc.md §6.5). The operator repairs the machine over SSH or
+         *     the machine console, then a plain reboot (any power action) returns
+         *     it to its installed system: the boot payload is released the moment
+         *     the machine reports rescue-ready. NOT destructive — no confirm gate;
+         *     but it reboots the machine and is mutually exclusive with install
+         *     jobs (409 JOB_MACHINE_BUSY), the same gate installs answer to.
+         *     ssh_keys are the operator's way in over the network; without them
+         *     the rescue system still offers a root shell on the machine console
+         *     (BMC-authenticated). Carrier: virtual-media mount by default (needs
+         *     a BMC); protocol-none machines force the PXE carrier (netboot tree +
+         *     Wake-on-LAN / manual power-on evidence); an explicit boot:"pxe"
+         *     overrides for vMedia-dead firmware.
+         */
+        ActionBootRescue: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "boot_rescue";
+            /**
+             * @description Carrier override (default: virtual_media when a BMC exists,
+             *     pxe for protocol-none machines).
+             * @enum {string}
+             */
+            boot?: "pxe" | "virtual_media";
+            /**
+             * @description OpenSSH public keys (authorized_keys format) injected into the
+             *     rescue system's root account. Optional — omit for console-only
+             *     rescue.
+             */
+            ssh_keys?: string[];
+        };
+        ActionRequest: components["schemas"]["ActionDiscover"] | components["schemas"]["ActionPowerOn"] | components["schemas"]["ActionPowerOff"] | components["schemas"]["ActionSoftOff"] | components["schemas"]["ActionReboot"] | components["schemas"]["ActionHardReboot"] | components["schemas"]["ActionCycle"] | components["schemas"]["ActionSetBootDevice"] | components["schemas"]["ActionMountMedia"] | components["schemas"]["ActionEjectMedia"] | components["schemas"]["ActionSetBiosAttributes"] | components["schemas"]["ActionEraseDrives"] | components["schemas"]["ActionBootRescue"];
         ActionDiscover: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1996,7 +2288,7 @@ export interface components {
             health_gate: "off" | "report" | "block";
         };
         /** @enum {string} */
-        JobType: "install" | "power" | "discover";
+        JobType: "install" | "power" | "discover" | "rescue" | "decommission";
         /** @enum {string} */
         JobState: "pending" | "running" | "succeeded" | "partial" | "failed" | "canceled";
         /** @enum {string} */
@@ -2021,15 +2313,25 @@ export interface components {
             vars?: {
                 [key: string]: string;
             };
-            /** @description RFC 7386 JSON Merge Patch applied over `spec` for THIS machine before variable substitution — deep merge, `null` deletes a key. For structural divergence only (a different disk layout on one machine); value-level divergence (IP/hostname) belongs in `vars`. Install jobs only. */
-            spec_patch?: components["schemas"]["InstallSpec"];
+            /** @description RFC 7386 JSON Merge Patch applied over `spec` for THIS machine before variable substitution — deep merge, `null` deletes a key. For structural divergence only (a different disk layout on one machine); value-level divergence (IP/hostname) belongs in `vars`. RAW JSON BY DESIGN: the patch must keep its own shape (absent fields mean "inherit", `null` means "delete") — a typed InstallSpec parse would emit empty strings for unset fields and the merge would overwrite declared intent with zeros (the regression this loosening fixes: a storage-only patch blanked image.distro for the patched machine). Install jobs only. */
+            spec_patch?: {
+                [key: string]: unknown;
+            };
         };
         JobCreate: {
             type: components["schemas"]["JobType"];
             targets: components["schemas"]["JobTargets"];
             spec?: components["schemas"]["InstallSpec"];
-            /** @description Required for `power` jobs (the BMC action to run on each target); optional for `discover` (defaults to `probe: auto`); ignored for `install`. */
+            /** @description Required for `power` jobs (the BMC action to run on each target); optional for `discover` (defaults to `probe: auto`); ignored for `install` and `decommission`. */
             action?: components["schemas"]["ActionRequest"];
+            /**
+             * @description Explicit high-risk confirmation — required by the default policy
+             *     for `decommission` jobs, which include an NIST 800-88 erase of
+             *     EVERY drive on every target (docs/07-bmc.md §6.6). Ignored by
+             *     the other job types.
+             * @default false
+             */
+            confirm: boolean;
             policy?: components["schemas"]["Policy"];
         };
         Job: {
@@ -2277,6 +2579,7 @@ export interface components {
         orderBy: "created_at" | "updated_at";
         order: "asc" | "desc";
         credentialId: components["schemas"]["CredentialId"];
+        profileId: components["schemas"]["ProfileId"];
         machineId: components["schemas"]["MachineId"];
         jobId: components["schemas"]["JobId"];
         taskId: components["schemas"]["TaskId"];
@@ -2718,6 +3021,187 @@ export interface operations {
             };
         };
     };
+    listBiosProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All profiles, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items?: components["schemas"]["BiosProfile"][];
+                    };
+                };
+            };
+        };
+    };
+    createBiosProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BiosProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Profile created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BiosProfile"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getBiosProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["profileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BiosProfile"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteBiosProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["profileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    applyBiosProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["profileId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BiosProfileApply"];
+            };
+        };
+        responses: {
+            /** @description Apply job created. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    setMachineBiosBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BiosBaselineSet"];
+            };
+        };
+        responses: {
+            /** @description Assignment stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Machine"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getMachineBiosDrift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drift verdict, or {"drift": null} without a baseline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BiosDriftView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+            /** @description BMC error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getMachineBios: {
         parameters: {
             query?: never;
@@ -2782,6 +3266,52 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getMachineAcceptance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest acceptance report, or {"report": null} when the machine has none yet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMachineDecommission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest decommission report, or {"report": null} when the machine has never been through the terminal flow. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecommissionView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     getMachineHealth: {
@@ -2910,6 +3440,15 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /** @description Conflict — boot_rescue targets a machine that already has an unfinished install or rescue task (pending/running/interrupted); the same mutual-exclusion gate installs answer to. Cancel the active job first; the problem detail names the busy machine. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             422: components["responses"]["Unprocessable"];
         };
     };

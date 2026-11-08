@@ -21,6 +21,7 @@ const MAP: Record<string, Record<string, Style>> = {
     discovering: { label: '盘查中', type: 'primary' },
     ready: { label: '就绪', type: 'success' },
     error: { label: '异常', type: 'danger' },
+    retired: { label: '已退役', type: 'info' },
   },
   job: {
     pending: { label: '排队中', type: 'info' },
