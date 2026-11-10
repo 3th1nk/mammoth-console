@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
@@ -130,11 +130,20 @@ async function assignBaseline() {
 }
 async function clearBaseline() {
   try {
+    await ElMessageBox.confirm(
+      '解除后这台机器不再有漂移比对参照（不会改动机器的 BIOS 设置）。',
+      '解除基线绑定',
+      { type: 'warning', confirmButtonText: '解除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
     await unwrap(await getClient().PUT('/api/v1/machines/{id}/bios/baseline', {
       params: { path: { id: props.id } },
       body: { profile_id: null },
     }))
-    ElMessage.success('基线赋值已清除')
+    ElMessage.success('基线绑定已解除')
     driftData.value = null
   } catch (e) {
     ElMessage.error(errorMessage(e))
@@ -408,11 +417,16 @@ const title = computed(() => {
         <template #header>
           <div class="card-head">
             <span>BIOS 基线与漂移</span>
-            <el-button size="small" :icon="Refresh" :disabled="!driftEnabled" :loading="driftReading" @click="driftRead()">
-              读取漂移
-            </el-button>
+            <el-tooltip content="实时读取 BMC 属性表并逐项比对基线，可能需要数十秒" placement="top">
+              <el-button size="small" :icon="Refresh" :disabled="!driftEnabled" :loading="driftReading" @click="driftRead()">
+                读取漂移
+              </el-button>
+            </el-tooltip>
           </div>
         </template>
+        <div class="text-muted" style="font-size: 13px; margin-bottom: 10px">
+          赋值只设定漂移比对的参照，不会写入机器 BIOS。
+        </div>
         <div v-if="!driftEnabled" class="text-muted" style="font-size: 13px">
           未赋值基线——在操作下拉「BIOS 基线…」赋值后，这里对照基线读出漂移（matched / drifted / unknown）。
         </div>
@@ -423,8 +437,8 @@ const title = computed(() => {
             <el-select
               v-model="selectedProfileId"
               size="small"
-              placeholder="换一个基线…"
-              style="width: 220px"
+              placeholder="换一个基线（选中后点赋值）"
+              style="width: 240px"
             >
               <el-option
                 v-for="p in profilesQuery.data.value ?? []"
@@ -434,7 +448,7 @@ const title = computed(() => {
               />
             </el-select>
             <el-button size="small" @click="assignBaseline" :disabled="!selectedProfileId">赋值</el-button>
-            <el-button size="small" text type="danger" @click="clearBaseline">清除</el-button>
+            <el-button size="small" text type="danger" @click="clearBaseline">解除绑定</el-button>
           </div>
           <template v-if="driftData?.drift">
             <div class="drift-summary">
