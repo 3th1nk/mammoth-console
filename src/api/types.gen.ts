@@ -953,7 +953,17 @@ export interface paths {
         get: operations["getPendingMachine"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove a sighting (manual dismiss)
+         * @description One-time removal of a pending sighting — the operator's answer to a
+         *     row whose machine was registered by hand after the sighting landed
+         *     (every ingestion path now auto-matches registered machines' NIC
+         *     MACs, so such rows would otherwise sit in the list forever).
+         *     Idempotent: removing an absent sighting is a no-op. An unregistered
+         *     machine that PXE-boots again re-creates the sighting — the ledger
+         *     records the room's present, not its history.
+         */
+        delete: operations["deletePendingMachine"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3941,6 +3951,26 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    deletePendingMachine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mac: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sighting removed (absent sighting = no-op). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     claimPendingMachine: {

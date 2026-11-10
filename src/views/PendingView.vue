@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import type { components } from '@/api/types.gen'
@@ -13,6 +14,7 @@ type PendingMachine = components['schemas']['PendingMachine']
 type Machine = components['schemas']['Machine']
 
 const router = useRouter()
+const qc = useQueryClient()
 const claimTarget = ref<PendingMachine | null>(null)
 const dialogVisible = ref(false)
 
@@ -28,6 +30,30 @@ const rows = computed(() => query.data.value?.items ?? [])
 function openClaim(m: PendingMachine) {
   claimTarget.value = m
   dialogVisible.value = true
+}
+
+// 一次性移除：给「机器已手动注册、记录先于注册落库」的遗留行用。已在
+// 各入库路径做 MAC 归属比对的引擎不会为已注册机器重建台账，未注册机器
+// 再次 PXE 上报仍会重新出现（台账记录机房的现在，不是历史）。
+async function dismiss(m: PendingMachine) {
+  try {
+    await ElMessageBox.confirm(
+      '移除这条待认领记录？适用于机器已手动注册、记录遗留的情况。未注册的机器再次 PXE 上报会重新出现。',
+      '移除待认领记录',
+      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await unwrap(await getClient().DELETE('/api/v1/pending-machines/{mac}', {
+      params: { path: { mac: m.mac } },
+    }))
+    ElMessage.success('已移除')
+    void qc.invalidateQueries({ queryKey: ['pending-machines'] })
+  } catch (e) {
+    ElMessage.error(errorMessage(e))
+  }
 }
 
 function onRegistered(machine: Machine) {
@@ -90,9 +116,10 @@ function onRegistered(machine: Machine) {
         <el-table-column label="最近出现" width="170">
           <template #default="{ row }">{{ formatTime(row.last_seen_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" plain @click.stop="openClaim(row)">认领</el-button>
+            <el-button size="small" type="danger" plain @click.stop="dismiss(row)">移除</el-button>
           </template>
         </el-table-column>
         <template #empty>
