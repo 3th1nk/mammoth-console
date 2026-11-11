@@ -10,6 +10,7 @@ import type { components } from '@/api/types.gen'
 import StateBadge from '@/components/StateBadge.vue'
 import PowerBadge from '@/components/PowerBadge.vue'
 import MachineActions from '@/components/MachineActions.vue'
+import { actionCommandRecent } from '@/utils/actionNavGuard'
 import RegisterMachineDialog from '@/components/RegisterMachineDialog.vue'
 import { formatBytes, formatTime } from '@/utils/format'
 
@@ -90,6 +91,8 @@ function prevPage() {
 
 function openDetail(m: Machine, _col: unknown, event: Event) {
   if ((event.target as HTMLElement)?.closest('.sel-col')) return
+  // 行内「更多」菜单刚交互过：菜单关闭瞬间的落穿点击会到这里，误跳详情。
+  if (actionCommandRecent()) return
   router.push({ name: 'machine-detail', params: { id: m.id } })
 }
 

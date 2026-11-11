@@ -10,6 +10,7 @@ import { getClient } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/problem'
 import type { components } from '@/api/types.gen'
 import { uuid } from '@/utils/uuid'
+import { markActionCommand } from '@/utils/actionNavGuard'
 
 /**
  * 机器动作入口。
@@ -86,6 +87,8 @@ async function submit(action: ActionRequest, confirmText?: string) {
 }
 
 function onCommand(cmd: string) {
+  // 打点供整行可点的列表页抑制紧随其后的落穿点击（见 actionNavGuard）。
+  markActionCommand()
   if (cmd === 'boot') {
     bootDialog.value = true
     return
@@ -178,8 +181,9 @@ async function decommission() {
   }
 }
 
-// 注销 = DELETE /machines/{id}:删除登记与档案(任务/事件历史按引擎语义保留)。
-// 列表与详情在 submitted 后各自刷新;详情页刷新后 404 由其自身的错误态呈现。
+// 注销 = DELETE /machines/{id}:删除登记与档案(任务/事件历史按引擎语义保留),
+// 与「注册」互为反义。列表与详情在 submitted 后各自刷新;详情页刷新后
+// 404 由其自身的错误态呈现。
 async function deregister() {
   try {
     await ElMessageBox.confirm(
@@ -252,15 +256,15 @@ function submitMedia() {
             <el-dropdown-item command="reboot">软重启</el-dropdown-item>
             <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
             <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
-            <el-dropdown-item divided command="boot">设置启动设备…</el-dropdown-item>
-            <el-dropdown-item command="media">挂载介质…</el-dropdown-item>
+            <el-dropdown-item divided command="boot">设置启动设备</el-dropdown-item>
+            <el-dropdown-item command="media">挂载介质</el-dropdown-item>
             <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-            <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
-            <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
-            <el-dropdown-item divided command="rescue">救援模式…</el-dropdown-item>
-            <el-dropdown-item command="decommission">退役(全盘擦除)…</el-dropdown-item>
-            <el-dropdown-item command="install">重装系统…</el-dropdown-item>
-            <el-dropdown-item divided command="deregister" class="deregister-item">注销机器…</el-dropdown-item>
+            <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
+            <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
+            <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
+            <el-dropdown-item command="decommission">退役擦盘</el-dropdown-item>
+            <el-dropdown-item command="install">重装系统</el-dropdown-item>
+            <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -280,15 +284,15 @@ function submitMedia() {
           <el-dropdown-item command="reboot">软重启</el-dropdown-item>
           <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
           <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
-          <el-dropdown-item divided command="boot">设置启动设备…</el-dropdown-item>
-          <el-dropdown-item command="media">挂载介质…</el-dropdown-item>
+          <el-dropdown-item divided command="boot">设置启动设备</el-dropdown-item>
+          <el-dropdown-item command="media">挂载介质</el-dropdown-item>
           <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-          <el-dropdown-item divided command="bios">BIOS 属性…</el-dropdown-item>
-          <el-dropdown-item command="erase">擦盘…</el-dropdown-item>
-          <el-dropdown-item divided command="rescue">救援模式…</el-dropdown-item>
-          <el-dropdown-item command="decommission">退役（全盘擦除）…</el-dropdown-item>
-          <el-dropdown-item divided command="install">重装系统…</el-dropdown-item>
-          <el-dropdown-item divided command="deregister" class="deregister-item">注销机器…</el-dropdown-item>
+          <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
+          <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
+          <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
+          <el-dropdown-item command="decommission">退役擦盘</el-dropdown-item>
+          <el-dropdown-item command="install">重装系统</el-dropdown-item>
+          <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>

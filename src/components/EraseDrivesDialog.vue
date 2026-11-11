@@ -94,7 +94,7 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="擦盘（NIST 800-88 控制器级清除）" width="680px" destroy-on-close>
+  <el-dialog v-model="visible" title="选盘擦除（NIST 800-88 控制器级清除）" width="680px" destroy-on-close>
     <el-alert
       type="error"
       :closable="false"

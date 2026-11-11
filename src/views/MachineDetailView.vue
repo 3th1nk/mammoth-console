@@ -412,7 +412,7 @@ const title = computed(() => {
         </el-table>
       </el-card>
 
-      <!-- BIOS 基线与漂移（roadmap 下一阶段 13）：赋值在操作下拉「BIOS 基线…」 -->
+      <!-- BIOS 基线与漂移（roadmap 下一阶段 13）：赋值入口就在本卡片 -->
       <el-card shadow="never" class="mb">
         <template #header>
           <div class="card-head">
@@ -424,33 +424,31 @@ const title = computed(() => {
             </el-tooltip>
           </div>
         </template>
-        <div class="text-muted" style="font-size: 13px; margin-bottom: 10px">
+        <div class="bios-baseline-line">
+          <span class="text-muted" style="font-size: 13px">当前基线</span>
+          <el-tag v-if="profileName" effect="plain">{{ profileName }}</el-tag>
+          <el-tag v-else type="info" effect="plain">未赋值</el-tag>
+          <el-select
+            v-model="selectedProfileId"
+            size="small"
+            placeholder="选择基线（选中后点赋值）"
+            style="width: 240px"
+          >
+            <el-option
+              v-for="p in profilesQuery.data.value ?? []"
+              :key="p.id"
+              :label="p.name"
+              :value="p.id"
+            />
+          </el-select>
+          <el-button size="small" @click="assignBaseline" :disabled="!selectedProfileId">赋值</el-button>
+          <el-button size="small" text type="danger" :disabled="!driftEnabled" @click="clearBaseline">解除绑定</el-button>
+        </div>
+        <div class="text-muted" style="font-size: 13px; margin: 10px 0">
           赋值只设定漂移比对的参照，不会写入机器 BIOS。
+          <template v-if="!driftEnabled">赋值后即可在这里对照基线读取漂移（匹配 / 漂移 / 未知）。</template>
         </div>
-        <div v-if="!driftEnabled" class="text-muted" style="font-size: 13px">
-          未赋值基线——在操作下拉「BIOS 基线…」赋值后，这里对照基线读出漂移（matched / drifted / unknown）。
-        </div>
-        <template v-else>
-          <div class="bios-baseline-line">
-            <span class="text-muted" style="font-size: 13px">当前基线</span>
-            <el-tag effect="plain">{{ profileName }}</el-tag>
-            <el-select
-              v-model="selectedProfileId"
-              size="small"
-              placeholder="换一个基线（选中后点赋值）"
-              style="width: 240px"
-            >
-              <el-option
-                v-for="p in profilesQuery.data.value ?? []"
-                :key="p.id"
-                :label="p.name"
-                :value="p.id"
-              />
-            </el-select>
-            <el-button size="small" @click="assignBaseline" :disabled="!selectedProfileId">赋值</el-button>
-            <el-button size="small" text type="danger" @click="clearBaseline">解除绑定</el-button>
-          </div>
-          <template v-if="driftData?.drift">
+        <template v-if="driftData?.drift">
             <div class="drift-summary">
               <el-tag type="success" effect="plain">匹配 {{ driftData.drift.matched }}</el-tag>
               <el-tag v-if="driftData.drift.drifted" type="warning" effect="plain">
@@ -476,7 +474,6 @@ const title = computed(() => {
             </div>
           </template>
           <div v-else-if="driftReading" class="text-muted" style="font-size: 13px">BMC 活读中…</div>
-        </template>
       </el-card>
 
       <!-- 装后验收报告（roadmap 下一阶段 12）：有报告才显示 -->
