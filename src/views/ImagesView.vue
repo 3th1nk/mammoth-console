@@ -122,8 +122,8 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
         </el-table-column>
         <el-table-column label="发行版" width="110">
           <template #default="{ row }">
-            <span v-if="row.distro || row.version" class="mono">
-              {{ [row.distro, row.version].filter(Boolean).join(' ') }}
+            <span v-if="row.distro || row.version || row.format" class="mono">
+              {{ [row.distro, row.version, row.format].filter(Boolean).join(' ') }}
             </span>
             <span v-else-if="row.state === 'fetching'" class="text-muted" title="引擎识别后将自动展示">识别中</span>
             <span v-else class="text-muted">—</span>
@@ -199,7 +199,8 @@ const STATE_META: Record<string, { label: string; type: 'primary' | 'success' | 
           <el-input v-model="reg.sha256" placeholder="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" class="mono" />
           <div class="hint">
             引擎按它做拉取门禁：不符即弃、不落缓存。发行版与版本留空时，拉取完成后自动识别。
-            整盘镜像（直写通路 dd）无 ISO 结构、不会被识别——注册时请显式填 distro=<code>dd</code>。
+            整盘镜像（直写通路 dd）无 ISO 结构、发行版不会被识别——注册时请显式填 distro=<code>dd</code>；
+            压缩格式（raw/raw.gz/raw.xz）与未压缩校验和引擎会按缓存文件自动识别，无需填写。
           </div>
         </el-form-item>
         <el-row :gutter="10">

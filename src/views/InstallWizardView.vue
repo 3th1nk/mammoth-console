@@ -70,6 +70,15 @@ const readyTargets = computed(() => targetRows.value.filter((r) => !r.busy))
 
 // ── Step2 安装意图 ──────────────────────────────────────────────────────────
 const distros = computed(() => conn.capabilities?.distros ?? [])
+// 可选发行版 = 引擎 user_facing 标记的过滤面(bootc 冻结 / alpine agent 无
+// 表单形态的通路驱动按契约退出,能力仍走 API);全量 distros 保留给族查询
+const selectableDistros = computed(() => distros.value.filter((d) => d.user_facing !== false))
+// dd 是通路不是发行版,沉底下拉末位——常规发行版是主流程,特殊通路垫底
+const orderedDistros = computed(() => {
+  const rest = selectableDistros.value.filter((d) => d.name !== 'dd')
+  const dd = selectableDistros.value.find((d) => d.name === 'dd')
+  return dd ? [...rest, dd] : rest
+})
 const bootDefault = computed(() => conn.capabilities?.boot_strategy_default ?? 'virtual_media')
 // 引导证据等待窗(headless,docs/13 §4):0 = 引擎缺省(10m)
 const evidenceWait = computed({
@@ -107,19 +116,24 @@ const isDebian = computed(() => distroFamily.value === 'preseed')
 watch(isWindows, (win) => {
   if (win && spec.boot?.strategy !== 'pxe') spec.boot!.strategy = 'virtual_media'
 })
-watch(isDD, (dd) => {
-  if (dd) {
-    imageMode.value = 'inline' // 整盘镜像走 URL 直填(机器直连拉流)
-  }
-})
 watch(hasHeadlessTarget, (h) => {
   if (h) spec.boot!.strategy = 'pxe' // 无带外机器只能 PXE + 引导证据等待
 })
 
 // ── 镜像：库选择 / 内联 ────────────────────────────────────────────────────
 const imageMode = ref<'library' | 'inline'>('library')
-// dd 镜像压缩(docs/09):raw.gz = busybox 原生解压(推荐交付),raw 零依赖
+// dd 镜像压缩(docs/09):raw.gz = busybox 原生解压(推荐交付),raw 零依赖。
+// 压缩格式是机器侧运行时选解压器的依据(引擎解析期按注册件的 magic bytes
+// 识别交叉校验),表单随注册镜像的扩展名预置、可手动改。
 const imageFormat = ref<'raw' | 'raw.gz' | 'raw.xz'>('raw.gz')
+
+// 注册件扩展名 → 压缩格式预置:.xz → raw.xz、.gz → raw.gz、其余 raw
+function formatForSource(url?: string): 'raw' | 'raw.gz' | 'raw.xz' {
+  const path = (url ?? '').split('?')[0]!.toLowerCase()
+  if (path.endsWith('.xz')) return 'raw.xz'
+  if (path.endsWith('.gz')) return 'raw.gz'
+  return 'raw'
+}
 const imagesQuery = useQuery({
   queryKey: ['wizard-images'],
   queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
@@ -148,7 +162,30 @@ watch(chosenImageId, (id) => {
     if (byMajor) picked = byMajor
   }
   spec.image.distro = picked.name
+  // dd:压缩格式随注册镜像的扩展名预置(.img.xz → raw.xz…),不是默认 raw.gz
+  if (picked.name === 'dd') imageFormat.value = formatForSource(img.source_url)
   autoDistroHint.value = `已按镜像信息自动选择 ${picked.name}（可手动修改）`
+})
+
+// 手动把发行版切到 dd 且库镜像在场：压缩格式同样随镜像预置
+watch(distroChoice, (v) => {
+  if (v !== 'dd' || imageMode.value !== 'library' || !chosenImageId.value) return
+  const img = readyImages.value.find((i) => i.id === chosenImageId.value)
+  if (img) imageFormat.value = formatForSource(img.source_url)
+})
+
+// 切到内联时带上所选注册件的事实（地址 + 校验和），不留空白表单：
+// dd 的校验和语义是未压缩镜像的 SHA256（docs/09），优先取引擎识别出的
+// 未压缩摘要（raw_sha256）；普通介质校验和就是注册文件本身的摘要。
+watch(imageMode, (mode) => {
+  const reg = readyImages.value.find((i) => i.id === chosenImageId.value)
+  if (mode === 'inline' && reg) {
+    spec.image.source = reg.source_url
+    spec.image.checksum = isDD.value
+      ? `sha256:${reg.raw_sha256 || reg.sha256}`
+      : `sha256:${reg.sha256}`
+    if (isDD.value) imageFormat.value = formatForSource(reg.source_url)
+  }
 })
 
 // ── 身份 / 访问 ────────────────────────────────────────────────────────────
@@ -531,7 +568,10 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
       const reg = readyImages.value.find((i) => i.id === chosenImageId.value)
       if (reg) {
         image.source = reg.source_url
-        image.checksum = `sha256:${reg.sha256}`
+        // dd 的校验和语义是未压缩镜像的 SHA256(docs/09)——试算镜像提交时
+        // 的引擎解析,优先取引擎识别出的未压缩摘要;普通介质用注册件摘要
+        const digest = isDD.value ? (reg.raw_sha256 || reg.sha256) : reg.sha256
+        image.checksum = `sha256:${digest}`
       } else {
         image.id = chosenImageId.value
       }
@@ -544,9 +584,10 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
   }
   if (isDD.value) {
     // dd(docs/09):format 是通路字段(生成器把带 default 的字段标为必填,
-    // 而契约本无 required——固定携带);checksum 是通路硬前置
+    // 而契约本无 required——固定携带);checksum 是通路硬前置,但仅内联
+    // 模式由表单携带——库镜像模式交给引擎解析(注册件识别出的未压缩摘要)
     ;(image as InstallSpec['image']).format = imageFormat.value
-    if (spec.image.checksum) image.checksum = spec.image.checksum
+    if (imageMode.value === 'inline' && spec.image.checksum) image.checksum = spec.image.checksum
   }
   const out: InstallSpec = { image }
 
@@ -758,11 +799,16 @@ const REPO_NAME_OK = /^[A-Za-z0-9._-]+$/
 
 function validateStep2(): string | null {
   if (!spec.image.distro) return '请选择发行版'
-  // dd(docs/09):机器直连拉流——http(s) source 与 checksum 都是通路硬前置
+  // dd(docs/09):库镜像模式校验和/格式由引擎按注册件解析携带;内联模式
+  // http(s) source 与 checksum(未压缩 SHA256)都是通路硬前置
   if (isDD.value) {
-    if (!spec.image.source) return '镜像直写:请填写整盘镜像的 http(s) 地址'
-    if (!/^https?:\/\//.test(spec.image.source)) return '镜像直写:source 需为 http(s) 地址(机器直连拉流)'
-    if (!spec.image.checksum?.trim()) return '镜像直写:checksum(SHA256,未压缩镜像)必填——写盘流逐字节校验的基准'
+    if (imageMode.value === 'library') {
+      if (!chosenImageId.value) return '镜像直写:请从镜像库选择整盘镜像,或切换为内联填写镜像地址'
+    } else {
+      if (!spec.image.source) return '镜像直写:请填写整盘镜像的 http(s) 地址'
+      if (!/^https?:\/\//.test(spec.image.source)) return '镜像直写:source 需为 http(s) 地址(机器直连拉流)'
+      if (!spec.image.checksum?.trim()) return '镜像直写:checksum(SHA256,未压缩镜像)必填——写盘流逐字节校验的基准'
+    }
     if (netMode.value === 'static') {
       const bad = nics.value.some((r) => r.kind === 'bond')
       if (bad) return '镜像直写首启 seed 暂只承载平面接口——bond/vlan 请移除或改用自动(DHCP)'
@@ -1177,13 +1223,14 @@ const HEALTH_GATE_DESC: Record<string, string> = {
     <el-card v-else-if="step === 2" shadow="never">
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="镜像" required>
-          <el-radio-group v-if="!isDD" v-model="imageMode">
+          <el-radio-group v-model="imageMode">
             <el-radio-button value="library">从镜像库选择（推荐）</el-radio-button>
             <el-radio-button value="inline">直接填写镜像地址</el-radio-button>
           </el-radio-group>
-          <div v-else class="hint" style="margin-bottom: 6px">
+          <div v-if="isDD" class="hint" style="margin-top: 6px">
             镜像直写：整盘镜像（自带分区表/引导器）由 agent 运行时流式写入目标盘，
-            写盘流逐字节 SHA256 校验；首启意图（主机名/网络/凭证）随 NoCloud seed 生效。
+            写盘流按未压缩镜像逐字节 SHA256 校验；首启意图（主机名/网络/凭证）随 NoCloud seed 生效。
+            {{ imageMode === 'library' ? '库镜像由引擎面向机器拉流，校验和与压缩格式按注册件自动携带。' : '' }}
           </div>
           <div v-if="imageMode === 'library'" style="width: 100%; margin-top: 6px">
             <el-select v-model="chosenImageId" placeholder="选择就绪的库镜像" style="width: 420px">
@@ -1205,11 +1252,6 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               :placeholder="isDD ? 'https://images.example.com/thor.img.gz（机器直连可达的整盘镜像）' : 'https://mirror.example.com/rocky9.iso（引擎可达；粘贴后自动识别发行版）'"
               class="mono"
             />
-            <el-select v-if="isDD" v-model="imageFormat" style="margin-top: 6px; width: 220px">
-              <el-option value="raw.gz" label="raw.gz（gzip，推荐）" />
-              <el-option value="raw.xz" label="raw.xz（需扩展池）" />
-              <el-option value="raw" label="raw（未压缩）" />
-            </el-select>
             <el-input
               v-model="spec.image.checksum"
               :placeholder="isDD ? '校验和: 9f86d8... (未压缩镜像的 SHA256，必填)' : '校验和: 9f86d8... (SHA256，可选，建议填写)'"
@@ -1217,11 +1259,21 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               style="margin-top: 6px"
             />
           </div>
+          <template v-if="isDD">
+            <div class="hint" style="margin-top: 6px">
+              压缩格式是机器侧运行时选解压器的依据，已按{{ imageMode === 'library' ? '注册镜像' : '镜像地址' }}扩展名预置，可手动改。
+            </div>
+            <el-select v-model="imageFormat" style="margin-top: 6px; width: 220px">
+              <el-option value="raw.gz" label="raw.gz（gzip，推荐）" />
+              <el-option value="raw.xz" label="raw.xz（需扩展池）" />
+              <el-option value="raw" label="raw（未压缩）" />
+            </el-select>
+          </template>
         </el-form-item>
 
         <el-form-item label="发行版" required>
           <el-select v-model="distroChoice" placeholder="选择发行版" style="width: 320px">
-            <el-option v-for="d in distros" :key="d.name" :value="d.name" :label="d.name === 'dd' ? '镜像直写（dd）' : d.name">
+            <el-option v-for="d in orderedDistros" :key="d.name" :value="d.name" :label="d.name === 'dd' ? '镜像直写（dd）' : d.name">
               <span style="display: inline-flex; align-items: center; gap: 8px">
                 <DistroBadge :name="d.name" :family="d.family" />
                 {{ d.name === 'dd' ? '镜像直写（dd）' : d.name }}

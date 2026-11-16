@@ -20,6 +20,9 @@ const CONFIRM_LABEL: Record<string, string> = { required: '必须确认', option
 const distroGroups = computed(() => {
   const map = new Map<DistroFamilyKey, { name: string; family?: string; pxe_support?: string }[]>()
   for (const d of conn.capabilities?.distros ?? []) {
+    // user_facing=false 的通路驱动(bootc 冻结/alpine agent)不上支持矩阵卡,
+    // 与装机向导同一口径;引擎 API 矩阵保持全量
+    if (d.user_facing === false) continue
     const key = resolveDistroKey(d.name, d.family)
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push({ name: d.name, family: d.family, pxe_support: d.pxe_support })

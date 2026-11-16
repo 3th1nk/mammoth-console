@@ -1275,6 +1275,8 @@ export interface components {
              * @enum {string}
              */
             family?: "kickstart" | "autoinstall" | "preseed" | "agent";
+            /** @description Whether client surfaces should offer this distro as a selectable install target (the console install wizard filters on it). Absent (= true) for regular distros. False marks pathway drivers that are frozen (bootc — submissions refused) or lack a matching client form model (alpine agent) — the drivers stay registered and API-servable; only the selectable surface hides them. */
+            user_facing?: boolean;
         };
         /** @description RFC 9457 problem details with Mammoth extensions. */
         Problem: {
@@ -1543,6 +1545,10 @@ export interface components {
         /**
          * @description ramdisk is optional (docs/05-inventory.md §4) and requires the
          *     alpine carrier (MAMMOTH_PROBE_ALPINE_ISO) with MAMMOTH_RAMDISK_ENABLED.
+         *     It is the takeover probe: the machine is power-cycled into the probe
+         *     environment and powered off afterwards — a submission against a
+         *     machine whose recorded power state is not `off` answers 422
+         *     RAMDISK_CONFIRM_REQUIRED unless the action carries `confirm: true`.
          * @enum {string}
          */
         ProbeKind: "auto" | "redfish" | "inband_ssh" | "ramdisk";
@@ -1772,6 +1778,17 @@ export interface components {
             ssh_keys?: string[];
         };
         ActionRequest: components["schemas"]["ActionDiscover"] | components["schemas"]["ActionPowerOn"] | components["schemas"]["ActionPowerOff"] | components["schemas"]["ActionSoftOff"] | components["schemas"]["ActionReboot"] | components["schemas"]["ActionHardReboot"] | components["schemas"]["ActionCycle"] | components["schemas"]["ActionSetBootDevice"] | components["schemas"]["ActionMountMedia"] | components["schemas"]["ActionEjectMedia"] | components["schemas"]["ActionSetBiosAttributes"] | components["schemas"]["ActionEraseDrives"] | components["schemas"]["ActionBootRescue"];
+        /**
+         * @description Trigger (re)discovery (docs/05-inventory.md §2). probe=auto is the
+         *     registration default: out-of-band reads plus an optional in-band SSH
+         *     layout snapshot — no reboot. probe=ramdisk is the takeover probe
+         *     (docs/05-inventory.md §4): the machine is power-cycled into the probe
+         *     environment and its compensation powers the machine off at the end —
+         *     a submission against a machine whose recorded power state is not
+         *     `off` answers 422 RAMDISK_CONFIRM_REQUIRED unless confirm is set;
+         *     machines with an in-flight install/rescue/decommission task answer
+         *     409 JOB_MACHINE_BUSY.
+         */
         ActionDiscover: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1780,6 +1797,13 @@ export interface components {
             type: "discover";
             probe?: components["schemas"]["ProbeKind"];
             boot?: components["schemas"]["BootSpec"];
+            /**
+             * @description Explicit confirmation for probe=ramdisk on a machine whose
+             *     recorded power state is not `off` — the probe power-cycles the
+             *     machine and powers it off afterwards. Ignored by the other probes.
+             * @default false
+             */
+            confirm: boolean;
         };
         ActionPowerOn: {
             /**
@@ -2496,6 +2520,18 @@ export interface components {
              * @description Cached file size; set when ready.
              */
             size_bytes?: number;
+            /**
+             * @description Compression the fetch worker sniffed from the cache file's magic bytes (docs/09「镜像直写通路」). Present from detection on; absent on legacy rows fetched before the field existed (treat as raw).
+             * @enum {string}
+             */
+            format?: "raw" | "raw.gz" | "raw.xz";
+            /** @description The UNCOMPRESSED image's sha256 — the digest the dd pathway's write-stream hash and read-back verification see. Equals sha256 for uncompressed images; spec resolution over image.id carries it so compressed library images stay verifiable. Rides with format. */
+            raw_sha256?: string;
+            /**
+             * Format: int64
+             * @description The uncompressed image's byte span (the read-back verification span for the dd pathway). Rides with format.
+             */
+            raw_size_bytes?: number;
             /**
              * @description `missing` — the ready file was removed from the media images directory out of band; the directory scanner flags it and restores the row automatically when the file returns.
              * @enum {string}
@@ -3785,6 +3821,18 @@ export interface operations {
                 mac: string;
                 /** @description Firmware architecture the client booted with (from DHCP option 93); informational. */
                 arch?: "bios" | "ia32" | "uefi-x64" | "uefi-arm64";
+                /**
+                 * @description Additional NIC MACs of the same machine, comma-separated — stage
+                 *     two of the two-stage enroll serve. The enroll prescript (stage
+                 *     one, returned when this param is absent) chains back with iPXE's
+                 *     own ${netX/mac} expansion so the pending ledger covers the
+                 *     machine's whole NIC set before the probe kernel's ip=dhcp runs:
+                 *     on pool deployments the kernel may DHCP on a NIC that never spoke
+                 *     during the ROM phase, and the lease gate consults the ledger, not
+                 *     the packet (2026-11-13 office-PC finding). Invalid/empty entries
+                 *     are skipped; registered machines' NICs stay out of the ledger.
+                 */
+                macs?: string;
             };
             header?: never;
             path?: never;
