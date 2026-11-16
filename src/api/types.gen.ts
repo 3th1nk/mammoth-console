@@ -1332,7 +1332,7 @@ export interface components {
         /**
          * @description `auto` probes Redfish first and falls back to IPMI.
          *     `fake` selects the in-process simulator for development and testing.
-         *     `none` registers a BMC-less (headless) machine (docs/
+         *     `none` registers a machine without a BMC (docs/
          *     13-headless-design.md): identity is the NIC MAC carried in the
          *     synthetic address `none://<mac>`; installs are driven over PXE with
          *     the machine's own boot (Wake-on-LAN, graceful in-band reboot of an
@@ -1350,8 +1350,8 @@ export interface components {
         MachineState: "registering" | "discovering" | "ready" | "error" | "retired";
         /**
          * @description The required keys must be present for every protocol; for `none`
-         *     their values are the headless identity — `address` is
-         *     `none://<mac>` and `credential_id` is the empty string.
+         *     their values are the machine's identity in place of a BMC —
+         *     `address` is `none://<mac>` and `credential_id` is the empty string.
          */
         BMC: {
             /** @description Out-of-band management address (host or host:port); `none://<mac>` for protocol `none`, `fake://<name>` for the simulator. */
@@ -2254,9 +2254,9 @@ export interface components {
              */
             installer: "setup" | "agent" | "auto";
             /**
-             * @description Headless (protocol=none) boot stage: how long to wait for boot
-             *     evidence (a PXE sighting of the machine) before warning the
-             *     operator to power the machine on manually (docs/
+             * @description Machines without a BMC (protocol none) boot stage: how long to
+             *     wait for boot evidence (a PXE sighting of the machine) before
+             *     warning the operator to power the machine on manually (docs/
              *     13-headless-design.md §4). The wait itself continues — a manual
              *     power-on after the window self-heals the flow — up to the task
              *     timeout. BMC-carried strategies ignore it.
@@ -2462,8 +2462,8 @@ export interface components {
                 [key: string]: unknown;
             }[];
             /**
-             * @description NIC facts from the probe's /sys/class/net scan (headless flow,
-             *     docs/13-headless-design.md §3.1): each entry carries at least
+             * @description NIC facts from the probe's /sys/class/net scan (machines without
+             *     a BMC, docs/13-headless-design.md §3.1): each entry carries at least
              *     `name` and `mac`, optionally `link_up`. Claim projects these
              *     onto the machine's hardware view so PXE observation and netboot
              *     arming can key on the MACs.
