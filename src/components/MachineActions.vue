@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
@@ -20,13 +20,17 @@ import { markActionCommand } from '@/utils/actionNavGuard'
  * 与重装向导后续里程碑提供。
  */
 const props = withDefaults(
-  defineProps<{ machineId: string; powerState?: string; flat?: boolean }>(),
+  defineProps<{ machineId: string; powerState?: string; flat?: boolean; bmc?: components['schemas']['BMC'] }>(),
   { powerState: 'unknown', flat: false },
 )
 const emit = defineEmits<{ submitted: [] }>()
 const router = useRouter()
 
 type ActionRequest = components['schemas']['ActionRequest']
+
+// 无带外机器(protocol=none,docs/13):引擎 HEADLESS_UNSUPPORTED 门只放行
+// 盘查(带内 SSH)与 boot_rescue——带外动作组在菜单里整段隐藏
+const headless = computed(() => props.bmc?.protocol === 'none')
 
 const submitting = ref(false)
 const bootDialog = ref(false)
@@ -136,7 +140,12 @@ function onCommand(cmd: string) {
     case 'eject_media':
       return void submit({ type: 'eject_media' }, POWER_CONFIRM['eject_media'])
     case 'discover':
-      return void submit({ type: 'discover', probe: 'auto' })
+      // headless 机器引擎只放行带内 SSH 探针(docs/13),无带外可 auto
+      if (headless.value) {
+        return void submit({ type: 'discover', probe: 'inband_ssh', confirm: false })
+      }
+      // confirm 门禁仅 ramdisk 接管探针需要
+      return void submit({ type: 'discover', probe: 'auto', confirm: false })
   }
 }
 
@@ -234,9 +243,11 @@ function submitMedia() {
 
 <template>
   <span class="actions-wrap" :class="{ row: flat }" @click.stop>
-    <!-- flat：行内高频电源 + 更多下拉 -->
+    <!-- flat：行内高频电源 + 更多下拉。headless(protocol=none) 机器无带外,
+         引擎 HEADLESS_UNSUPPORTED 门只放行盘查(带内 SSH)/救援——带外动作整组隐藏 -->
     <template v-if="flat">
       <el-button
+        v-if="!headless"
         size="small"
         :type="powerState === 'on' ? 'warning' : 'primary'"
         :plain="powerState === 'on'"
@@ -251,8 +262,39 @@ function submitMedia() {
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="discover:auto">盘查（自动探针）</el-dropdown-item>
-            <el-dropdown-item divided command="power_off">硬关机</el-dropdown-item>
+            <el-dropdown-item command="discover:auto">{{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}</el-dropdown-item>
+            <template v-if="!headless">
+              <el-dropdown-item divided command="power_off">硬关机</el-dropdown-item>
+              <el-dropdown-item command="reboot">软重启</el-dropdown-item>
+              <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
+              <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
+              <el-dropdown-item divided command="boot">设置启动设备</el-dropdown-item>
+              <el-dropdown-item command="media">挂载介质</el-dropdown-item>
+              <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
+              <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
+              <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
+              <el-dropdown-item divided command="decommission">退役擦盘</el-dropdown-item>
+            </template>
+            <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
+            <el-dropdown-item command="install">重装系统</el-dropdown-item>
+            <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </template>
+
+    <!-- 完整：详情页头部单下拉。headless 同 flat 口径:带外动作整组隐藏 -->
+    <el-dropdown v-else trigger="click" @command="onCommand">
+      <el-button type="primary" plain :loading="submitting">
+        操作<el-icon v-if="!submitting" class="el-icon--right"><ArrowDown /></el-icon>
+      </el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="discover:auto">{{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}</el-dropdown-item>
+          <template v-if="!headless">
+            <el-dropdown-item divided command="power_on">开机</el-dropdown-item>
+            <el-dropdown-item command="soft_off">软关机</el-dropdown-item>
+            <el-dropdown-item command="power_off">硬关机</el-dropdown-item>
             <el-dropdown-item command="reboot">软重启</el-dropdown-item>
             <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
             <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
@@ -261,36 +303,9 @@ function submitMedia() {
             <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
             <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
             <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
-            <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
-            <el-dropdown-item command="decommission">退役擦盘</el-dropdown-item>
-            <el-dropdown-item command="install">重装系统</el-dropdown-item>
-            <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-    </template>
-
-    <!-- 完整：详情页头部单下拉 -->
-    <el-dropdown v-else trigger="click" @command="onCommand">
-      <el-button type="primary" plain :loading="submitting">
-        操作<el-icon v-if="!submitting" class="el-icon--right"><ArrowDown /></el-icon>
-      </el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="discover:auto">盘查（自动探针）</el-dropdown-item>
-          <el-dropdown-item divided command="power_on">开机</el-dropdown-item>
-          <el-dropdown-item command="soft_off">软关机</el-dropdown-item>
-          <el-dropdown-item command="power_off">硬关机</el-dropdown-item>
-          <el-dropdown-item command="reboot">软重启</el-dropdown-item>
-          <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
-          <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
-          <el-dropdown-item divided command="boot">设置启动设备</el-dropdown-item>
-          <el-dropdown-item command="media">挂载介质</el-dropdown-item>
-          <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-          <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
-          <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
+            <el-dropdown-item divided command="decommission">退役擦盘</el-dropdown-item>
+          </template>
           <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
-          <el-dropdown-item command="decommission">退役擦盘</el-dropdown-item>
           <el-dropdown-item command="install">重装系统</el-dropdown-item>
           <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
         </el-dropdown-menu>

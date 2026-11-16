@@ -309,6 +309,7 @@ function onActionSubmitted() {
             <MachineActions
               :machine-id="row.id"
               :power-state="row.power_state"
+              :bmc="row.bmc"
               flat
               @submitted="onActionSubmitted"
             />

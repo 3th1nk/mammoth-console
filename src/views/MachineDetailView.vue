@@ -25,6 +25,10 @@ const query = useQuery({
 
 const machine = computed(() => query.data.value as Machine | undefined)
 const hardware = computed(() => machine.value?.hardware)
+// headless(protocol=none,docs/13):无带外控制器——健康/SEL/固件清单/BIOS 漂移
+// 四卡的数据源全是 BMC 活读或 Redfish 盘查产出,整组隐藏;基础信息的带外
+// 字段以占位符呈现。
+const headless = computed(() => machine.value?.bmc.protocol === 'none')
 
 // 分区快照：磁盘健康徽章数据源（ramdisk 探针 smartctl/nvme 读数）
 const layoutQuery = useQuery({
@@ -49,6 +53,8 @@ const LIVE_READ_TIMEOUT_MS = 60_000
 const healthQuery = useQuery({
   queryKey: computed(() => ['machine-health', props.id]),
   retry: 0,
+  // headless 无 BMC 活读面,引擎门即 422——不发请求
+  enabled: computed(() => !headless.value),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/machines/{id}/health', {
@@ -60,6 +66,7 @@ const healthQuery = useQuery({
 const selQuery = useQuery({
   queryKey: computed(() => ['machine-sel', props.id]),
   retry: 0,
+  enabled: computed(() => !headless.value),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/machines/{id}/sel', {
@@ -202,8 +209,9 @@ const title = computed(() => {
         <PowerBadge v-if="machine" :state="machine.power_state" />
       </div>
       <div class="header-right">
-        <el-button :loading="kvmLoading" @click="openKvm">控制台</el-button>
-        <MachineActions v-if="machine" :machine-id="machine.id" @submitted="query.refetch()" />
+        <!-- headless(protocol=none) 无带外,KVM 依赖 BMC 控制器——直接隐藏 -->
+        <el-button v-if="machine && machine.bmc.protocol !== 'none'" :loading="kvmLoading" @click="openKvm">控制台</el-button>
+        <MachineActions v-if="machine" :machine-id="machine.id" :bmc="machine.bmc" @submitted="query.refetch()" />
         <el-button :icon="Refresh" @click="query.refetch()">刷新</el-button>
       </div>
     </div>
@@ -233,10 +241,23 @@ const title = computed(() => {
           <el-descriptions-item label="机器 ID"><span class="mono">{{ machine.id }}</span></el-descriptions-item>
           <el-descriptions-item label="BMC 地址"><span class="mono">{{ machine.bmc.address }}</span></el-descriptions-item>
           <el-descriptions-item label="协议">{{ machine.bmc.protocol ?? '—' }}</el-descriptions-item>
-          <el-descriptions-item label="厂商">{{ machine.bmc.vendor || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="型号">{{ machine.bmc.model || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="控制器固件">{{ machine.bmc.firmware_version || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="BMC 凭证"><span class="mono">{{ machine.bmc.credential_id }}</span></el-descriptions-item>
+          <!-- headless:带外字段无值可填,以「无带外」占位;BMC 地址是 none://<MAC> 机器身份,照实显示 -->
+          <el-descriptions-item label="厂商">
+            <span v-if="headless" class="text-muted">无带外</span>
+            <span v-else>{{ machine.bmc.vendor || '—' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="型号">
+            <span v-if="headless" class="text-muted">无带外</span>
+            <span v-else>{{ machine.bmc.model || '—' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="控制器固件">
+            <span v-if="headless" class="text-muted">无带外</span>
+            <span v-else>{{ machine.bmc.firmware_version || '—' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="BMC 凭证">
+            <span v-if="headless" class="text-muted">无带外</span>
+            <span v-else class="mono">{{ machine.bmc.credential_id }}</span>
+          </el-descriptions-item>
           <el-descriptions-item label="SSH 凭证"><span class="mono">{{ machine.ssh_credential_id || '—' }}</span></el-descriptions-item>
           <el-descriptions-item label="带内地址"><span class="mono">{{ machine.ssh?.address || '—' }}</span></el-descriptions-item>
           <el-descriptions-item label="注册时间">{{ formatTime(machine.created_at) }}</el-descriptions-item>
@@ -321,7 +342,7 @@ const title = computed(() => {
         </el-table>
       </el-card>
 
-      <el-card shadow="never" class="mb">
+      <el-card v-if="!headless" shadow="never" class="mb">
         <template #header>
           <div class="card-head">
             <span>硬件健康（BMC 实时读）</span>
@@ -364,7 +385,7 @@ const title = computed(() => {
         <div v-else class="text-muted">正在读取…</div>
       </el-card>
 
-      <el-card shadow="never" class="mb">
+      <el-card v-if="!headless" shadow="never" class="mb">
         <template #header>
           <div class="card-head">
             <span>SEL 硬件日志（最近 500 条）</span>
@@ -399,7 +420,8 @@ const title = computed(() => {
         <div v-else class="text-muted">正在读取…</div>
       </el-card>
 
-      <el-card shadow="never" header="控制器固件清单（仅 Redfish 盘查产出）">
+      <!-- 固件清单仅 Redfish 盘查产出,headless 机器永远为空——整卡隐藏 -->
+      <el-card v-if="!headless" shadow="never" header="控制器固件清单（仅 Redfish 盘查产出）">
         <el-table :data="machine.firmware ?? []" size="small">
           <el-table-column prop="id" label="组件 ID" min-width="200">
             <template #default="{ row }"><span class="mono">{{ row.id }}</span></template>
@@ -412,8 +434,9 @@ const title = computed(() => {
         </el-table>
       </el-card>
 
-      <!-- BIOS 基线与漂移（roadmap 下一阶段 13）：赋值入口就在本卡片 -->
-      <el-card shadow="never" class="mb">
+      <!-- BIOS 基线与漂移(roadmap 下一阶段 13):赋值入口就在本卡片。
+           headless 无 BMC 活读,漂移比对无从谈起——整卡隐藏 -->
+      <el-card v-if="!headless" shadow="never" class="mb">
         <template #header>
           <div class="card-head">
             <span>BIOS 基线与漂移</span>
