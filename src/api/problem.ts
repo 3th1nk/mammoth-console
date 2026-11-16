@@ -31,6 +31,10 @@ const CODE_MESSAGES: Record<string, string> = {
   BIOS_CONFIRM_REQUIRED: '缺少两段式确认（confirm），提交被拒绝',
   DRIVE_ERASE_CONFIRM_REQUIRED: '擦盘缺少两段式确认（confirm），提交被拒绝',
   RENDER_FAILED: '安装意图渲染失败：检查该发行版方言的能力边界',
+  // 无带外机器(protocol=none)的带外动作/活读门(2026-11-16 引擎更名
+  // HEADLESS_UNSUPPORTED → BMC_ABSENT;旧码过渡期并存,引擎跟上后移除)
+  BMC_ABSENT: '该机器无带外控制器（协议=none）：此操作依赖 BMC，不可用',
+  HEADLESS_UNSUPPORTED: '该机器无带外控制器（协议=none）：此操作依赖 BMC，不可用',
 }
 
 /** 引擎 API 错误：携带 problem 细节，message 已译为可读文案。 */
