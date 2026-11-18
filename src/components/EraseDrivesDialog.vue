@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ElMessage, ElNotification } from 'element-plus'
 import { WarningFilled } from '@element-plus/icons-vue'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { machineDomain, jobDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { formatBytes } from '@/utils/format'
 import { uuid } from '@/utils/uuid'
@@ -20,6 +21,7 @@ const props = defineProps<{ machineId: string; modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const router = useRouter()
 const conn = useConnectionStore()
+const qc = useQueryClient()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -76,6 +78,9 @@ async function submit() {
       body: { type: 'erase_drives', serials: selected.value, confirm: true } as never,
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
+    // 异步 job 受理后机器视角（power_state 等）与任务列表都会变,即时失效
+    void qc.invalidateQueries({ queryKey: machineDomain })
+    void qc.invalidateQueries({ queryKey: jobDomain })
     ElNotification.success({
       title: '擦盘已受理',
       message: jobId ? `任务 ${jobId} 已创建，点击查看进度` : '擦盘动作已受理',

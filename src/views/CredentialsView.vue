@@ -5,13 +5,14 @@ import { Refresh, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { credentialsKey } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
 
 type Credential = components['schemas']['Credential']
 
 const query = useQuery({
-  queryKey: ['credentials'],
+  queryKey: credentialsKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/credentials')),
 })
 

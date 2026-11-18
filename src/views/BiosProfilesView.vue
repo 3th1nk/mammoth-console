@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Delete } from '@element-plus/icons-vue'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { biosProfilesKey } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
 import { uuid } from '@/utils/uuid'
@@ -72,7 +73,7 @@ function rowsToAttrs(rows: AttrRow[]): Record<string, unknown> {
 const qc = useQueryClient()
 
 const listQuery = useQuery({
-  queryKey: ['bios-profiles'],
+  queryKey: biosProfilesKey,
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/bios-profiles')).then((d) => d?.items ?? []),
 })
@@ -196,7 +197,7 @@ async function createProfile() {
     ElMessage.success('基线已创建')
     createVisible.value = false
     resetForm()
-    void qc.invalidateQueries({ queryKey: ['bios-profiles'] })
+    void qc.invalidateQueries({ queryKey: biosProfilesKey })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   } finally {
@@ -217,7 +218,7 @@ async function deleteProfile(p: BiosProfile) {
   try {
     await unwrap(await getClient().DELETE('/api/v1/bios-profiles/{id}', { params: { path: { id: p.id } } }))
     ElMessage.success('基线已删除')
-    void qc.invalidateQueries({ queryKey: ['bios-profiles'] })
+    void qc.invalidateQueries({ queryKey: biosProfilesKey })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   }

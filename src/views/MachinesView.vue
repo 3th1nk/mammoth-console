@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { machineListKey } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import StateBadge from '@/components/StateBadge.vue'
 import PowerBadge from '@/components/PowerBadge.vue'
@@ -32,7 +33,7 @@ const cursor = ref<string | undefined>(undefined)
 const cursorStack = ref<(string | undefined)[]>([])
 
 const query = useQuery({
-  queryKey: computed(() => ['machines', stateFilter.value, q.value, labelChips.value, cursor.value]),
+  queryKey: computed(() => machineListKey(stateFilter.value, q.value, labelChips.value, cursor.value)),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/machines', {

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ElMessage, ElNotification } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { machineDomain, jobDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { uuid } from '@/utils/uuid'
 import { useConnectionStore } from '@/stores/connection'
@@ -18,6 +19,7 @@ const props = defineProps<{ machineId: string; modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const router = useRouter()
 const conn = useConnectionStore()
+const qc = useQueryClient()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -86,6 +88,9 @@ async function submit() {
       body: { type: 'set_bios_attributes', attributes, confirm: true } as never,
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
+    // 异步 job 受理后机器视角与任务列表都会变,即时失效
+    void qc.invalidateQueries({ queryKey: machineDomain })
+    void qc.invalidateQueries({ queryKey: jobDomain })
     ElNotification.success({
       title: 'BIOS 修改已受理',
       message: jobId ? `任务 ${jobId} 已创建（属性在下次引导时生效）` : '已受理',

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { jobListKey } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import StateBadge from '@/components/StateBadge.vue'
 import JobSummaryBar from '@/components/JobSummaryBar.vue'
@@ -23,7 +24,7 @@ const cursor = ref<string | undefined>(undefined)
 const cursorStack = ref<(string | undefined)[]>([])
 
 const query = useQuery({
-  queryKey: computed(() => ['jobs', typeFilter.value, stateFilter.value, cursor.value]),
+  queryKey: computed(() => jobListKey(typeFilter.value, stateFilter.value, cursor.value)),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/jobs', {

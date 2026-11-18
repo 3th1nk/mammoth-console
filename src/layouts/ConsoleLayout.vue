@@ -1,11 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/vue-query'
 import { ElMessage } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap } from '@/api/problem'
 import { subscribeSse, type SseHandle } from '@/api/sse'
+import {
+  pendingListKey,
+  pendingDomain,
+  machineDomain,
+  jobDomain,
+  credentialDomain,
+  imageDomain,
+  biosProfileDomain,
+  webhookDomain,
+  eventDomain,
+  dashboardDomain,
+} from '@/api/queryKeys'
 import { useConnectionStore } from '@/stores/connection'
 import { useThemeStore } from '@/stores/theme'
 import { copyToClipboard } from '@/utils/clipboard'
@@ -15,11 +27,13 @@ import CommandPalette from '@/components/CommandPalette.vue'
 const conn = useConnectionStore()
 const theme = useThemeStore()
 const router = useRouter()
+const qc = useQueryClient()
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
 
-// 待认领徽章：15s 轮询兜底（零注册台账量小、无分页）
+// 待认领徽章：key 与待认领列表页/Dashboard 共享（pendingListKey），认领等
+// 变更由全局事件总线即时失效；15s 轮询仅作 SSE 不可用时的兜底
 const pendingQuery = useQuery({
-  queryKey: ['pending-count'],
+  queryKey: pendingListKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/pending-machines')),
   refetchInterval: 15000,
 })
@@ -30,17 +44,53 @@ function disconnect() {
   router.push({ name: 'welcome' })
 }
 
-// ── root 密码一次性捕获（task.root_password 事件错过即丢） ──────────────────
+// ── 全局事件流：root 密码一次性捕获 + 事件→查询失效总线 ────────────────────
 const pwDialog = ref(false)
 const pwInfo = ref<{ password: string; taskId: string } | null>(null)
-let pwWatch: SseHandle | null = null
+let eventWatch: SseHandle | null = null
 
-async function watchRootPassword() {
-  if (!conn.connected || pwWatch) return
+// 事件 type 前缀 → 查询域前缀。task.* 不进映射：job/task 详情页各自订阅
+// job 级 SSE 失效（装机期间 PXE/阶段事件很密，不打全局总线）；机器事件
+// 顺带刷 pending（claimed/created/deleted 影响待认领数）；BIOS 基线事件
+// 顺带刷机器域（baseline_set/applied 改机器视角）。
+const EVENT_DOMAINS: Array<[string, readonly QueryKey[]]> = [
+  ['pending.', [pendingDomain]],
+  ['machine.', [machineDomain, pendingDomain]],
+  ['credential.', [credentialDomain]],
+  ['image.', [imageDomain]],
+  ['bios_profile', [biosProfileDomain, machineDomain]],
+  ['webhook.', [webhookDomain]],
+  ['job.', [jobDomain]],
+]
+
+// 聚合类失效节流：总览统计与事件列表对实时性不敏感，3s 聚合一次即可，
+// 避免 task.* 高频事件引发的密集 refetch。资源域映射不节流（本身低频，
+// 徽标/详情要即时）。
+const BULK_INVALIDATE_MS = 3000
+let lastBulkInvalidate = 0
+
+function invalidateOnEvent(type: string) {
+  const now = Date.now()
+  if (now - lastBulkInvalidate > BULK_INVALIDATE_MS) {
+    lastBulkInvalidate = now
+    void qc.invalidateQueries({ queryKey: eventDomain })
+    void qc.invalidateQueries({ queryKey: dashboardDomain })
+  }
+  for (const [prefix, domains] of EVENT_DOMAINS) {
+    if (type.startsWith(prefix)) {
+      for (const d of domains) void qc.invalidateQueries({ queryKey: d })
+      break
+    }
+  }
+}
+
+async function watchGlobalEvents() {
+  if (!conn.connected || eventWatch) return
   // 订阅水位取当前最新事件：历史里的旧密码不重弹（事件表会留存很久）。
   // 必须 order=desc——events 列表默认 asc，无游标的 page_size=1 返回的是
   // 全表最老事件；那样水位永远在远古，每次刷新整张事件表从头回放
-  // （200 行/s），正是刷新卡顿的放大器之一。
+  // （200 行/s），正是刷新卡顿的放大器之一。断线重连按 Last-Event-ID
+  // 续传，补发的事件照常走失效总线——错过的变更会被补刷。
   let watermark = 0
   try {
     const latest = await unwrap(
@@ -51,11 +101,12 @@ async function watchRootPassword() {
     watermark = 0
   }
   const loadedAt = Date.now()
-  pwWatch = subscribeSse({
+  eventWatch = subscribeSse({
     url: '/api/v1/events/stream',
     token: conn.token,
     lastEventId: String(watermark),
     onMessage: (msg) => {
+      invalidateOnEvent(msg.event)
       if (msg.event !== 'task.root_password') return
       try {
         const ev = JSON.parse(msg.data) as { resource_id?: string; ts?: string; payload?: { password?: string } }
@@ -73,10 +124,10 @@ async function watchRootPassword() {
 watch(
   () => conn.connected,
   (ok) => {
-    if (ok) void watchRootPassword()
+    if (ok) void watchGlobalEvents()
     else {
-      pwWatch?.close()
-      pwWatch = null
+      eventWatch?.close()
+      eventWatch = null
     }
   },
   { immediate: true },

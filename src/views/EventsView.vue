@@ -5,6 +5,7 @@ import { Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { eventsListKey, eventDomain, webhooksKey } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
 import { copyToClipboard } from '@/utils/clipboard'
@@ -27,7 +28,7 @@ const cursor = ref<string | undefined>(undefined)
 const cursorStack = ref<(string | undefined)[]>([])
 
 const eventsQuery = useQuery({
-  queryKey: computed(() => ['events', rtFilter.value, ridFilter.value, typeFilter.value, cursor.value]),
+  queryKey: computed(() => eventsListKey(rtFilter.value, ridFilter.value, typeFilter.value, cursor.value)),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/events', {
@@ -75,7 +76,7 @@ function prettyPayload(p: unknown): string {
 
 // ── Webhooks 管理 ───────────────────────────────────────────────────────────
 const hooksQuery = useQuery({
-  queryKey: ['webhooks'],
+  queryKey: webhooksKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/webhooks')),
 })
 const hookRows = computed(() => hooksQuery.data.value?.items ?? [])
@@ -112,7 +113,7 @@ async function submitCreate() {
       url: created?.url ?? form.url,
       secret: created?.secret ?? '',
     }
-    void queryClient.invalidateQueries({ queryKey: ['webhooks'] })
+    void queryClient.invalidateQueries({ queryKey: webhooksKey })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   } finally {
@@ -154,7 +155,7 @@ function copySecret() {
   <div class="page">
     <div class="page-header">
       <h1 class="page-title">事件</h1>
-      <el-button :icon="Refresh" @click="queryClient.invalidateQueries({ queryKey: ['events'] }); queryClient.invalidateQueries({ queryKey: ['webhooks'] })">
+      <el-button :icon="Refresh" @click="queryClient.invalidateQueries({ queryKey: eventDomain }); queryClient.invalidateQueries({ queryKey: webhooksKey })">
         刷新
       </el-button>
     </div>

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { pendingDomain, machineDomain, credentialsKey, credentialDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 
 /**
@@ -20,6 +21,8 @@ const visible = computed({
   get: () => props.modelValue,
   set: (v: boolean) => emit('update:modelValue', v),
 })
+
+const qc = useQueryClient()
 
 const bmcAddress = ref('')
 const protocol = ref<'auto' | 'redfish' | 'ipmi' | 'fake' | 'none'>('auto')
@@ -58,7 +61,7 @@ const submitting = ref(false)
 
 // 凭证列表（元数据，无 secret）：打开对话框时拉取
 const credsQuery = useQuery({
-  queryKey: ['credentials'],
+  queryKey: credentialsKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/credentials')),
   enabled: visible,
 })
@@ -173,6 +176,13 @@ async function submit() {
         ? `认领成功：${machine.id}，固件观测与探针报告已迁移`
         : `注册成功：${machine.id}，已自动开始盘查`,
     )
+    // 即时失效，不等 SSE 回环：认领/注册影响待认领数与机器台账；
+    // 内联新建凭证时凭证列表也变了（徽标/列表/详情页全部联动刷新）
+    void qc.invalidateQueries({ queryKey: pendingDomain })
+    void qc.invalidateQueries({ queryKey: machineDomain })
+    if (credMode.value === 'new' && !isHeadless.value) {
+      void qc.invalidateQueries({ queryKey: credentialDomain })
+    }
     visible.value = false
     emit('registered', machine as components['schemas']['Machine'])
   } catch (e) {

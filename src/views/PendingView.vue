@@ -6,6 +6,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { pendingListKey, pendingDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import RegisterMachineDialog from '@/components/RegisterMachineDialog.vue'
 import { formatTime } from '@/utils/format'
@@ -18,9 +19,10 @@ const qc = useQueryClient()
 const claimTarget = ref<PendingMachine | null>(null)
 const dialogVisible = ref(false)
 
-// 零注册台账无分页、量小，15s 轮询兜底（引擎 pending 事件落地后切 SSE）
+// 零注册台账无分页、量小。key 与侧栏徽标/Dashboard 共享（pendingListKey），
+//  sighting/认领/移除由全局事件总线即时失效；15s 轮询仅作 SSE 兜底
 const query = useQuery({
-  queryKey: ['pending-machines'],
+  queryKey: pendingListKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/pending-machines')),
   refetchInterval: 15000,
 })
@@ -50,7 +52,7 @@ async function dismiss(m: PendingMachine) {
       params: { path: { mac: m.mac } },
     }))
     ElMessage.success('已移除')
-    void qc.invalidateQueries({ queryKey: ['pending-machines'] })
+    void qc.invalidateQueries({ queryKey: pendingDomain })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   }

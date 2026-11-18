@@ -5,6 +5,7 @@ import { Refresh, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { imagesKey } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { formatBytes, formatTime } from '@/utils/format'
 
@@ -14,7 +15,7 @@ type Image = components['schemas']['Image']
 // missing（缓存文件被移出媒体目录）由引擎扫描器自动恢复（周期 60s），15s 轮询跟进；
 // 列表无分页（契约：newest first 全量返回）
 const query = useQuery({
-  queryKey: ['images'],
+  queryKey: imagesKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
   refetchInterval: (q) => {
     const items = q.state.data?.items ?? []

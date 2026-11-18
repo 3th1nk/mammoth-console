@@ -5,6 +5,12 @@ import * as echarts from 'echarts'
 import { Refresh, CircleCheck } from '@element-plus/icons-vue'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import {
+  pendingListKey,
+  credentialsKey,
+  imagesKey,
+  dashboardKey,
+} from '@/api/queryKeys'
 import { useConnectionStore } from '@/stores/connection'
 import StateBadge from '@/components/StateBadge.vue'
 import { formatTime, formatVersion } from '@/utils/format'
@@ -14,7 +20,7 @@ const MACHINES_STATS_PAGE = 200
 const conn = useConnectionStore()
 
 const machinesQuery = useQuery({
-  queryKey: ['dashboard', 'machines'],
+  queryKey: dashboardKey('machines'),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/machines', {
@@ -22,12 +28,13 @@ const machinesQuery = useQuery({
       }),
     ),
 })
+// key 与侧栏徽标/待认领列表共享（pendingListKey）：一处失效三处联动
 const pendingQuery = useQuery({
-  queryKey: ['dashboard', 'pending'],
+  queryKey: pendingListKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/pending-machines')),
 })
 const runningJobsQuery = useQuery({
-  queryKey: ['dashboard', 'jobs-running'],
+  queryKey: dashboardKey('jobs-running'),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/jobs', {
@@ -36,7 +43,7 @@ const runningJobsQuery = useQuery({
     ),
 })
 const failedJobsQuery = useQuery({
-  queryKey: ['dashboard', 'jobs-failed'],
+  queryKey: dashboardKey('jobs-failed'),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/jobs', {
@@ -52,15 +59,15 @@ function dismissOnboarding() {
   localStorage.setItem('mammoth.console.onboarding', 'done')
 }
 const credsQuery = useQuery({
-  queryKey: ['credentials'],
+  queryKey: credentialsKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/credentials')),
 })
 const imagesAllQuery = useQuery({
-  queryKey: ['images'],
+  queryKey: imagesKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
 })
 const installJobQuery = useQuery({
-  queryKey: ['dashboard', 'install-jobs'],
+  queryKey: dashboardKey('install-jobs'),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/jobs', { params: { query: { type: 'install', page_size: 1 } } })),
 })

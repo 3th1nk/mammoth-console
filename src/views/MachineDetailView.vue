@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import {
+  machineKey,
+  machineLayoutKey,
+  machineHealthKey,
+  machineSelKey,
+  machineAcceptanceKey,
+  machineDecommissionKey,
+  biosProfilesKey,
+} from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import StateBadge from '@/components/StateBadge.vue'
 import PowerBadge from '@/components/PowerBadge.vue'
@@ -16,9 +25,10 @@ type Machine = components['schemas']['Machine']
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
+const queryClient = useQueryClient()
 
 const query = useQuery({
-  queryKey: computed(() => ['machine', props.id]),
+  queryKey: computed(() => machineKey(props.id)),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/machines/{id}', { params: { path: { id: props.id } } })),
 })
@@ -32,7 +42,7 @@ const headless = computed(() => machine.value?.bmc.protocol === 'none')
 
 // 分区快照：磁盘健康徽章数据源（ramdisk 探针 smartctl/nvme 读数）
 const layoutQuery = useQuery({
-  queryKey: computed(() => ['machine-layout', props.id]),
+  queryKey: computed(() => machineLayoutKey(props.id)),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/machines/{id}/layout', { params: { path: { id: props.id } } })),
 })
@@ -51,7 +61,7 @@ const diskHealthBySerial = computed(() => {
 // 针对旧引擎/代理卡死），retry 关掉让错误立即可见而不是静默翻倍等待。
 const LIVE_READ_TIMEOUT_MS = 60_000
 const healthQuery = useQuery({
-  queryKey: computed(() => ['machine-health', props.id]),
+  queryKey: computed(() => machineHealthKey(props.id)),
   retry: 0,
   // headless 无 BMC 活读面,引擎门即 422——不发请求
   enabled: computed(() => !headless.value),
@@ -64,7 +74,7 @@ const healthQuery = useQuery({
     ),
 })
 const selQuery = useQuery({
-  queryKey: computed(() => ['machine-sel', props.id]),
+  queryKey: computed(() => machineSelKey(props.id)),
   retry: 0,
   enabled: computed(() => !headless.value),
   queryFn: async () =>
@@ -78,7 +88,7 @@ const selQuery = useQuery({
 
 // 装后验收报告（roadmap 下一阶段 12）：持久化读——无报告 = null（不 404）。
 const acceptanceQuery = useQuery({
-  queryKey: computed(() => ['machine-acceptance', props.id]),
+  queryKey: computed(() => machineAcceptanceKey(props.id)),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/machines/{id}/acceptance', { params: { path: { id: props.id } } })),
 })
@@ -97,7 +107,7 @@ const CHECK_LABEL: Record<string, string> = {
 
 // 退役证据（roadmap 下一阶段 18）：退役时落档（擦除记录/固件/SEL/BIOS 快照）。
 const dcQuery = useQuery({
-  queryKey: computed(() => ['machine-decommission', props.id]),
+  queryKey: computed(() => machineDecommissionKey(props.id)),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/machines/{id}/decommission', { params: { path: { id: props.id } } })),
 })
@@ -106,7 +116,7 @@ const dcReport = computed(() => dcQuery.data.value?.report ?? null)
 // BIOS 基线 + 漂移（roadmap 下一阶段 13）：drift 读 = 按钮触发的活 BMC 读。
 const biosBaseline = computed(() => machine.value?.bios_profile_id ?? null)
 const profilesQuery = useQuery({
-  queryKey: ['bios-profiles-list'],
+  queryKey: biosProfilesKey,
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/bios-profiles')).then((d) => d?.items ?? []),
 })
@@ -131,6 +141,10 @@ async function assignBaseline() {
     ElMessage.success(`基线已赋值：${profilesQuery.data.value?.find((p) => p.id === selectedProfileId.value)?.name ?? selectedProfileId.value}`)
     selectedProfileId.value = ''
     void profilesQuery.refetch()
+    // 「当前基线」标签来自 machine.bios_profile_id：不失效 machine 查询
+    // 页面会一直显示旧值（事件总线的 bios_profile 前缀不覆盖这台机器的
+    // 即时反馈，这里补上）
+    void queryClient.invalidateQueries({ queryKey: machineKey(props.id) })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   }
@@ -152,6 +166,8 @@ async function clearBaseline() {
     }))
     ElMessage.success('基线绑定已解除')
     driftData.value = null
+    // 同 assignBaseline：解除后「当前基线」标签要即时归零
+    void queryClient.invalidateQueries({ queryKey: machineKey(props.id) })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   }

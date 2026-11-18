@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Refresh } from '@element-plus/icons-vue'
@@ -7,6 +7,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { subscribeSse } from '@/api/sse'
+import { jobScopeKey, jobKey, jobTasksKey } from '@/api/queryKeys'
 import { useConnectionStore } from '@/stores/connection'
 import type { components } from '@/api/types.gen'
 import StateBadge from '@/components/StateBadge.vue'
@@ -21,12 +22,12 @@ const queryClient = useQueryClient()
 const conn = useConnectionStore()
 
 const jobQuery = useQuery({
-  queryKey: computed(() => ['job', props.id]),
+  queryKey: computed(() => jobKey(props.id)),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/jobs/{id}', { params: { path: { id: props.id } } })),
 })
 const tasksQuery = useQuery({
-  queryKey: computed(() => ['job-tasks', props.id]),
+  queryKey: computed(() => jobTasksKey(props.id)),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/jobs/{id}/tasks', {
@@ -38,7 +39,8 @@ const tasksQuery = useQuery({
 const job = computed(() => jobQuery.data.value as Job | undefined)
 const tasks = computed(() => tasksQuery.data.value?.items ?? [])
 
-// job 级 SSE：任何事件触发查询失效刷新（summary 与 tasks 都是 DB 派生）
+// job 级 SSE：任何事件失效 ['job', jobId] 前缀——层级 key 下 summary、
+// 任务列表与打开中的子任务详情一次命中（都是 DB 派生）
 let closeSse: (() => void) | null = null
 watch(
   () => props.id,
@@ -50,8 +52,7 @@ watch(
       url: `/api/v1/jobs/${props.id}/events`,
       token: conn.token,
       onMessage: () => {
-        void queryClient.invalidateQueries({ queryKey: ['job', props.id] })
-        void queryClient.invalidateQueries({ queryKey: ['job-tasks', props.id] })
+        void queryClient.invalidateQueries({ queryKey: jobScopeKey(props.id) })
       },
       onError: () => {}, // 断线重连由 sse.ts 处理
     })
@@ -59,6 +60,7 @@ watch(
   },
   { immediate: true },
 )
+onUnmounted(() => closeSse?.())
 
 const JOB_TYPE_LABEL: Record<string, string> = {
   install: '装机',
@@ -98,7 +100,8 @@ async function cancelJob() {
   try {
     await unwrap(await getClient().POST('/api/v1/jobs/{id}/cancel', { params: { path: { id: props.id } } }))
     ElMessage.success('已提交取消')
-    void queryClient.invalidateQueries({ queryKey: ['job', props.id] })
+    // 取消会连带改任务状态：scope 失效覆盖 summary/任务列表/子任务详情
+    void queryClient.invalidateQueries({ queryKey: jobScopeKey(props.id) })
   } catch (e) {
     ElMessage.error(errorMessage(e))
   } finally {
@@ -130,7 +133,7 @@ function openTask(t: components['schemas']['Task']) {
         >
           取消任务
         </el-button>
-        <el-button :icon="Refresh" @click="queryClient.invalidateQueries({ queryKey: ['job'] })">刷新</el-button>
+        <el-button :icon="Refresh" @click="queryClient.invalidateQueries({ queryKey: jobScopeKey(id) })">刷新</el-button>
       </div>
     </div>
 

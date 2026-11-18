@@ -6,6 +6,7 @@ import { Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
+import { machineWizardTargetsKey, imageWizardKey, jobDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { useConnectionStore } from '@/stores/connection'
 import DistroBadge from '@/components/DistroBadge.vue'
@@ -37,7 +38,7 @@ type TargetRow = {
 }
 
 const targetsQuery = useQuery({
-  queryKey: ['wizard-targets', machineIds.value],
+  queryKey: machineWizardTargetsKey(machineIds.value),
   queryFn: async () => {
     const ids = machineIds.value
     const rows: TargetRow[] = []
@@ -135,7 +136,7 @@ function formatForSource(url?: string): 'raw' | 'raw.gz' | 'raw.xz' {
   return 'raw'
 }
 const imagesQuery = useQuery({
-  queryKey: ['wizard-images'],
+  queryKey: imageWizardKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/images')),
 })
 const readyImages = computed(() => (imagesQuery.data.value?.items ?? []).filter((i) => i.state === 'ready'))
@@ -1021,7 +1022,7 @@ async function submit() {
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
     ElMessage.success(`装机任务 ${jobId} 已受理`)
-    void queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    void queryClient.invalidateQueries({ queryKey: jobDomain })
     router.push({ name: 'job-detail', params: { id: jobId } })
   } catch (e) {
     ElMessage.error(errorMessage(e))

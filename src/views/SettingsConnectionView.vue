@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { useConnectionStore } from '@/stores/connection'
 import { getClient } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/problem'
+import { configKey } from '@/api/queryKeys'
 import DistroBadge from '@/components/DistroBadge.vue'
 import { resolveDistroKey, familyLabel, type DistroFamilyKey } from '@/utils/distro'
 import { formatVersion } from '@/utils/format'
@@ -73,7 +74,7 @@ function disconnect() {
 // ── 当前生效配置（引擎 A6，只读脱敏快照） ───────────────────────────────────
 // 配置是进程生命周期的：拉一次就够（staleTime Infinity），手动刷新兜底。
 const cfgQuery = useQuery({
-  queryKey: ['config'],
+  queryKey: configKey,
   queryFn: async () => unwrap(await getClient().GET('/api/v1/config')),
   staleTime: Infinity,
   refetchOnWindowFocus: false,

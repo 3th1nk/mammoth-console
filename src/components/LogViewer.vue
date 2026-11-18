@@ -15,6 +15,9 @@ import { unwrap } from '@/api/problem'
  * （加载更早可临时超出，由后续 push 的窗口裁剪收敛）。
  */
 const props = defineProps<{ jobId: string; taskId: string }>()
+// eos（任务终态收流完毕）对外通知：父页面据此刷新依赖任务状态的数据
+// （如任务详情的阶段步骤），否则日志在动、状态不动
+const emit = defineEmits<{ ended: [] }>()
 
 interface LogLine {
   id: number
@@ -182,6 +185,7 @@ function startStream(resumeId: number) {
       if (msg.event === 'eos') {
         ended.value = true
         handle?.close()
+        emit('ended')
         return
       }
       if (msg.event === 'log') {
