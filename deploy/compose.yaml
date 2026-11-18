@@ -9,9 +9,9 @@
 #   打开 http://<host>:8081 ，在连接页填引擎 token、地址留空即可。
 #
 # 场景 C（--profile engine）：连同引擎 all-in-one 一起从零起，与引擎仓库
-# deploy/compose.all-in-one.yml 同步：--mode=all 的 builder 镜像 +
-# PostgreSQL + 介质目录 bind mount（./data/media，需对 uid 1000 可写：
-#   mkdir -p deploy/data/media && sudo chown 1000 deploy/data/media）。
+# deploy/compose.all-in-one.yml 同步：--mode=all 的装机工具链镜像（根
+# Dockerfile）+ PostgreSQL + 介质目录 bind mount（./data/media，需对
+# uid 1000 可写：mkdir -p deploy/data/media && sudo chown 1000 deploy/data/media）。
 # 引擎源码取自旁路检出：默认 ../../mammoth（相对本文件），可用
 # MAMMOTH_ENGINE_DIR 改指其他位置。
 #
@@ -63,16 +63,19 @@ services:
   mammoth:
     build:
       context: ${MAMMOTH_ENGINE_DIR:-../../mammoth}
-      # builder 镜像（alpine + xorriso/wimlib/7z），不是 distroless：介质
-      # 组装在进程内 shell 出这些工具（bootiso.go）；distroless 只适合纯
-      # 文件服务分面（api）。
-      dockerfile: Dockerfile.builder
+      # 装机工具链镜像（根 Dockerfile，alpine + xorriso/wimlib/7z），不是
+      # distroless：介质组装在进程内 shell 出这些工具（bootiso.go）。引擎
+      # v1.4.2+ 的镜像语义：根 Dockerfile=装机工具链形态（镜像主名
+      # mammoth）、Dockerfile.api=纯控制面 distroless（mammoth-api，只适
+      # 合纯文件服务分面）——本服务要组装介质，必须用前者。旧的
+      # Dockerfile.builder 名已废弃（引擎 28017a7 拆分时删除）。
+      dockerfile: Dockerfile
     profiles: ["engine"]
     depends_on:
       postgres:
         condition: service_healthy
-    # builder 镜像的默认 CMD 是 --mode=builder 分面，引擎拒绝该模式启动；
-    # all-in-one 需要每个分面都在进程内。
+    # 镜像默认 CMD 自引擎 v1.4.2 起即 --mode=all；这里显式写出仅为保持
+    # 明确——all-in-one 需要每个分面都在进程内。
     command: ["serve", "--mode=all"]
     # PXE 绑定特权 UDP 端口（67/69/4011）——镜像以 uid 1000 运行，开启
     # PXE 时必须显式授予该 capability。
