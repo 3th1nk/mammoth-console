@@ -6,9 +6,13 @@ import { getClient } from '@/api/client'
 import { unwrap } from '@/api/problem'
 
 /**
- * 任务日志查看器：优先走引擎的 logs SSE（回放 + 尾随 + 终态 eos 收流，
- * docs/04-engine-api-enhancements.md A4）；SSE 不可用时降级 2s cursor 轮询。
- * 仅会话内保留，最多 2000 行。
+ * 任务日志查看器：打开先取末尾 200 行渲染（logs order=desc），SSE 携带
+ * Last-Event-ID 从末条续流——打开即有内容，不再从第一条全量回放（安装
+ * 日志经 syslog 灌入整个安装环境 journal，几万行；旧实现 200 行/s 回放
+ * 要滚数分钟，刷新/重开必经）。desc 引导不可用（旧引擎忽略 order，按
+ * id 升序识别）时回退旧的从头回放语义。向上滚自动暂停跟随、触顶按 desc
+ * 游标加载更早；回到底部自动恢复跟随。仅会话内保留，最多 2000 行
+ * （加载更早可临时超出，由后续 push 的窗口裁剪收敛）。
  */
 const props = defineProps<{ jobId: string; taskId: string }>()
 
@@ -21,6 +25,10 @@ interface LogLine {
   ts: string
 }
 
+const PAGE = 200
+const BUFFER_MAX = 2000
+const EDGE = 40 // 距底/距顶多少像素算"贴边"（跟随判定 / 加载更早触发）
+
 const conn = useConnectionStore()
 const logs = ref<LogLine[]>([])
 const ended = ref(false)
@@ -31,6 +39,9 @@ const container = ref<HTMLDivElement>()
 let handle: SseHandle | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let lastId = 0
+let hasOlder = false
+let loadingOlder = false
+let epoch = 0 // 任务切换守卫：慢的 desc 引导回来时任务可能已换
 
 const LEVEL_COLOR: Record<string, string> = {
   DEBUG: '#909399',
@@ -45,7 +56,7 @@ const visible = computed(() =>
 
 function push(l: LogLine) {
   logs.value.push(l)
-  if (logs.value.length > 2000) logs.value.splice(0, logs.value.length - 2000)
+  if (logs.value.length > BUFFER_MAX) logs.value.splice(0, logs.value.length - BUFFER_MAX)
   if (l.id > lastId) lastId = l.id
 }
 
@@ -56,6 +67,88 @@ function parseLog(data: string): LogLine | null {
   } catch {
     return null
   }
+}
+
+/** 尾部引导：末页（新→旧）反转成写序进缓冲，返回是否可据此续流。
+ * 旧引擎不认识 order 参数时会静默按 asc 返回首页——id 严格递增识别出
+ * 来，丢弃并回退全量回放（也顺带保证新引擎下顺序契约被破坏时不出错）。 */
+async function bootstrapTail(jobId: string, taskId: string): Promise<boolean> {
+  try {
+    const page = await unwrap(
+      await getClient().GET('/api/v1/jobs/{id}/tasks/{taskId}/logs', {
+        params: {
+          path: { id: jobId, taskId },
+          query: { order: 'desc', page_size: PAGE },
+        },
+      }),
+    )
+    const items = [...(page.items ?? [])]
+    if (items.length === 0) return true // 空任务：无可引导，直接开流
+    let descending = true
+    for (let i = 1; i < items.length; i++) {
+      const prev = items[i - 1]
+      const cur = items[i]
+      if (prev && cur && cur.id >= prev.id) {
+        descending = false
+        break
+      }
+    }
+    if (!descending) return false
+    hasOlder = items.length === PAGE // 不满一页即已到最早
+    for (const l of items.reverse()) push(l as LogLine)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 触顶加载更早：desc 游标续翻，顶部插入后补回 scrollHeight 增量，
+ * 视点不跳。满页才认为还有更早（恰好整页边界多试一次空查询，可忽略）。 */
+async function loadOlder() {
+  const first = logs.value[0]
+  if (!hasOlder || loadingOlder || !first) return
+  loadingOlder = true
+  try {
+    const page = await unwrap(
+      await getClient().GET('/api/v1/jobs/{id}/tasks/{taskId}/logs', {
+        params: {
+          path: { id: props.jobId, taskId: props.taskId },
+          query: { order: 'desc', cursor: String(first.id), page_size: PAGE },
+        },
+      }),
+    )
+    const items = page.items ?? []
+    if (items.length < PAGE) hasOlder = false
+    if (items.length > 0) {
+      const el = container.value
+      const before = el ? el.scrollHeight : 0
+      const older = [...items].reverse() as LogLine[]
+      logs.value.splice(0, 0, ...older)
+      if (el) {
+        await nextTick()
+        el.scrollTop += el.scrollHeight - before
+      }
+    }
+  } catch {
+    // 静默：下个触顶事件再试
+  } finally {
+    loadingOlder = false
+  }
+}
+
+function onScroll() {
+  const el = container.value
+  if (!el) return
+  const toBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  following.value = toBottom <= EDGE
+  if (el.scrollTop <= EDGE) void loadOlder()
+}
+
+async function jumpToBottom() {
+  following.value = true
+  await nextTick()
+  const el = container.value
+  if (el) el.scrollTop = el.scrollHeight
 }
 
 function startPolling() {
@@ -80,10 +173,11 @@ function startPolling() {
   }, 2000)
 }
 
-function startStream() {
+function startStream(resumeId: number) {
   handle = subscribeSse({
     url: `/api/v1/jobs/${props.jobId}/tasks/${props.taskId}/logs/stream`,
     token: conn.token,
+    lastEventId: resumeId > 0 ? String(resumeId) : undefined,
     onMessage: (msg) => {
       if (msg.event === 'eos') {
         ended.value = true
@@ -106,13 +200,25 @@ function startStream() {
 
 watch(
   () => [props.jobId, props.taskId],
-  () => {
+  async () => {
+    const my = ++epoch
+    const { jobId, taskId } = props
     logs.value = []
     lastId = 0
     ended.value = false
+    following.value = true
+    hasOlder = false
+    loadingOlder = false
     handle?.close()
     handle = null
-    startStream()
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+    // 尾部引导成功 → SSE 从末条续流（零回放）；失败 → 旧的从头回放
+    const bootstrapped = await bootstrapTail(jobId, taskId)
+    if (my !== epoch) return // 引导期间任务已切换，本轮作废
+    startStream(bootstrapped ? lastId : 0)
   },
   { immediate: true },
 )
@@ -143,9 +249,13 @@ onUnmounted(() => {
         </el-radio-button>
       </el-radio-group>
       <el-checkbox v-model="following" size="small">跟随尾部</el-checkbox>
+      <el-tag v-if="!hasOlder && logs.length > 0" type="info" size="small">已到最早</el-tag>
       <el-tag v-if="ended" type="info" size="small">任务已终态，日志收流完毕</el-tag>
+      <el-button v-if="!following && !ended" size="small" text type="primary" @click="jumpToBottom">
+        回到底部 ↓
+      </el-button>
     </div>
-    <div ref="container" class="lines mono">
+    <div ref="container" class="lines mono" @scroll="onScroll">
       <div v-for="l in visible" :key="l.id" class="line">
         <span class="ts">{{ l.ts.slice(11, 19) }}</span>
         <span class="lv" :style="{ color: LEVEL_COLOR[l.level] ?? '#909399' }">{{ l.level.padEnd(5) }}</span>

@@ -38,6 +38,9 @@ const eventsQuery = useQuery({
             type: typeFilter.value.trim() || undefined,
             page_size: 50,
             cursor: cursor.value,
+            // 审计视图最新在前（desc）：asc 首页是全表最老事件，翻到
+            // 天荒地老也看不到最近发生了什么。下一页 = 更早的事件。
+            order: 'desc',
           },
         },
       }),
@@ -219,7 +222,7 @@ function copySecret() {
           </el-table>
 
           <div class="pager">
-            <span class="text-muted" style="font-size: 13px">游标分页：仅支持前后翻页</span>
+            <span class="text-muted" style="font-size: 13px">游标分页 · 最新在前，下一页向更早翻</span>
             <div>
               <el-button size="small" :disabled="cursorStack.length === 0" @click="prevPage">上一页</el-button>
               <el-button size="small" :disabled="!nextCursor" @click="nextPage">下一页</el-button>

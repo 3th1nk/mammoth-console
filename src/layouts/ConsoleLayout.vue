@@ -37,10 +37,15 @@ let pwWatch: SseHandle | null = null
 
 async function watchRootPassword() {
   if (!conn.connected || pwWatch) return
-  // 订阅水位取当前最新事件：历史里的旧密码不重弹（事件表会留存很久）
+  // 订阅水位取当前最新事件：历史里的旧密码不重弹（事件表会留存很久）。
+  // 必须 order=desc——events 列表默认 asc，无游标的 page_size=1 返回的是
+  // 全表最老事件；那样水位永远在远古，每次刷新整张事件表从头回放
+  // （200 行/s），正是刷新卡顿的放大器之一。
   let watermark = 0
   try {
-    const latest = await unwrap(await getClient().GET('/api/v1/events', { params: { query: { page_size: 1 } } }))
+    const latest = await unwrap(
+      await getClient().GET('/api/v1/events', { params: { query: { page_size: 1, order: 'desc' } } }),
+    )
     watermark = latest.items?.[0]?.id ?? 0
   } catch {
     watermark = 0

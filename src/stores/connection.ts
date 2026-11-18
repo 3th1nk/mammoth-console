@@ -38,6 +38,11 @@ export const useConnectionStore = defineStore('connection', () => {
     try {
       res = await fetch(url, {
         headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
+        // 探测必须自带超时：路由守卫的首屏导航 await 本请求，引擎/代理
+        // hang 时 fetch 永远 pending → 白屏（client.ts 的 30s 兜底覆盖
+        // 不到这里——probe 先于 client 存在）。10s 无响应按连接失败
+        // 处理，守卫降级到欢迎页。
+        signal: AbortSignal.timeout(10_000),
       })
     } catch {
       throw new Error('无法连接引擎：请检查地址与网络（跨源直连会被浏览器 CORS 拦截，留空走同源或配置反代）')

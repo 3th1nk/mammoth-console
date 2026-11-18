@@ -2622,8 +2622,19 @@ export interface components {
         pageSize: number;
         /** @description Opaque continuation token from a previous page (`next_cursor`). */
         cursor: string;
-        orderBy: "created_at" | "updated_at";
         order: "asc" | "desc";
+        orderBy: "created_at" | "updated_at";
+        /**
+         * @description Page direction over the monotonic id (no order_by pair: the sort
+         *     field is the id itself). `asc` (default) pages forward in write
+         *     order (`cursor` = continue after this id); `desc` pages backward
+         *     from the newest row (`cursor` = continue before this id) — the
+         *     load-older direction for tail-first viewers and the way to read the
+         *     newest row (`page_size=1&order=desc`). `next_cursor` follows the
+         *     active direction, so a client pages deeper by passing it back
+         *     unchanged with the same `order`.
+         */
+        cursorOrder: "asc" | "desc";
         credentialId: components["schemas"]["CredentialId"];
         profileId: components["schemas"]["ProfileId"];
         machineId: components["schemas"]["MachineId"];
@@ -3669,6 +3680,17 @@ export interface operations {
                 page_size?: components["parameters"]["pageSize"];
                 /** @description Opaque continuation token from a previous page (`next_cursor`). */
                 cursor?: components["parameters"]["cursor"];
+                /**
+                 * @description Page direction over the monotonic id (no order_by pair: the sort
+                 *     field is the id itself). `asc` (default) pages forward in write
+                 *     order (`cursor` = continue after this id); `desc` pages backward
+                 *     from the newest row (`cursor` = continue before this id) — the
+                 *     load-older direction for tail-first viewers and the way to read the
+                 *     newest row (`page_size=1&order=desc`). `next_cursor` follows the
+                 *     active direction, so a client pages deeper by passing it back
+                 *     unchanged with the same `order`.
+                 */
+                order?: components["parameters"]["cursorOrder"];
             };
             header?: never;
             path: {
@@ -3696,6 +3718,15 @@ export interface operations {
             query?: {
                 /** @description Replay logs after this log id. */
                 after?: string;
+                /**
+                 * @description Fresh-subscription backlog bound: replay only the last `tail`
+                 *     lines instead of the task's full history. Ignored when
+                 *     Last-Event-ID or `after` names an explicit resume point. The
+                 *     console's open-page bootstrap uses it to render the tail
+                 *     instantly instead of replaying a whole install's log at 200
+                 *     lines/s.
+                 */
+                tail?: number;
             };
             header?: {
                 "Last-Event-ID"?: string;
@@ -4301,6 +4332,17 @@ export interface operations {
                 page_size?: components["parameters"]["pageSize"];
                 /** @description Opaque continuation token from a previous page (`next_cursor`). */
                 cursor?: components["parameters"]["cursor"];
+                /**
+                 * @description Page direction over the monotonic id (no order_by pair: the sort
+                 *     field is the id itself). `asc` (default) pages forward in write
+                 *     order (`cursor` = continue after this id); `desc` pages backward
+                 *     from the newest row (`cursor` = continue before this id) — the
+                 *     load-older direction for tail-first viewers and the way to read the
+                 *     newest row (`page_size=1&order=desc`). `next_cursor` follows the
+                 *     active direction, so a client pages deeper by passing it back
+                 *     unchanged with the same `order`.
+                 */
+                order?: components["parameters"]["cursorOrder"];
             };
             header?: never;
             path?: never;
