@@ -1,11 +1,27 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ChevronDown, LoaderCircle, X } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { pendingDomain, machineDomain, credentialsKey, credentialDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 /**
  * 注册机器表单（POST /machines 与零注册 claim 复用，docs/03-product-design.md §7.2/§7.3）。
@@ -23,6 +39,8 @@ const visible = computed({
 })
 
 const qc = useQueryClient()
+
+const submitting = ref(false)
 
 const bmcAddress = ref('')
 const protocol = ref<'auto' | 'redfish' | 'ipmi' | 'fake' | 'none'>('auto')
@@ -55,9 +73,9 @@ const credId = ref('')
 const useSsh = ref(false)
 const sshCredId = ref('')
 const sshAddress = ref('')
+
 const labelChips = ref<string[]>([])
 const labelInput = ref('')
-const submitting = ref(false)
 
 // 凭证列表（元数据，无 secret）：打开对话框时拉取
 const credsQuery = useQuery({
@@ -92,7 +110,7 @@ function addLabel() {
   const v = labelInput.value.trim()
   if (!v) return
   if (!/^[^=]+=[^=]*$/.test(v)) {
-    ElMessage.warning('标签格式为 k=v')
+    toast.warning('标签格式为 k=v')
     return
   }
   if (!labelChips.value.includes(v)) labelChips.value = [...labelChips.value, v]
@@ -127,22 +145,22 @@ async function submit() {
   let credentialIdFinal = credId.value.trim()
   if (isHeadless.value) {
     if (!MAC_OK.test(headlessMac.value.trim())) {
-      ElMessage.warning('请填写装机网卡的 MAC 地址（如 AA:BB:CC:DD:EE:01）')
+      toast.warning('请填写装机网卡的 MAC 地址（如 AA:BB:CC:DD:EE:01）')
       return
     }
     bmcAddressFinal = headlessAddress()
     credentialIdFinal = ''
   } else {
     if (!bmcAddressFinal) {
-      ElMessage.warning('请填写 BMC 地址')
+      toast.warning('请填写 BMC 地址')
       return
     }
     if (credMode.value === 'new' && (!credName.value.trim() || !credUser.value || !credPass.value)) {
-      ElMessage.warning('请填写新凭证的名称、用户名与密码')
+      toast.warning('请填写新凭证的名称、用户名与密码')
       return
     }
     if (credMode.value === 'existing' && !credentialIdFinal) {
-      ElMessage.warning('请填写已有凭证 ID（cred_…）')
+      toast.warning('请填写已有凭证 ID（cred_…）')
       return
     }
     if (credMode.value === 'new') {
@@ -171,7 +189,7 @@ async function submit() {
           }),
         )
       : await unwrap(await getClient().POST('/api/v1/machines', { body }))
-    ElMessage.success(
+    toast.success(
       props.claimMac
         ? `认领成功：${machine.id}，固件观测与探针报告已迁移`
         : `注册成功：${machine.id}，已自动开始盘查`,
@@ -186,7 +204,7 @@ async function submit() {
     visible.value = false
     emit('registered', machine as components['schemas']['Machine'])
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     submitting.value = false
   }
@@ -194,154 +212,148 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog
-    v-model="visible"
-    :title="claimMac ? `认领机器 ${claimMac}` : '注册机器'"
-    width="560px"
-  >
-    <el-alert
-      v-if="claimMac"
-      type="info"
-      :closable="false"
-      show-icon
-      class="mb"
-      :title="claimTip"
-    />
-    <el-form label-position="top" @submit.prevent="submit">
-      <el-form-item label="带外协议">
-        <el-radio-group v-model="protocol">
-          <el-radio-button value="auto">自动（Redfish→IPMI）</el-radio-button>
-          <el-radio-button value="redfish">Redfish</el-radio-button>
-          <el-radio-button value="ipmi">IPMI</el-radio-button>
-          <el-radio-button value="fake">演示</el-radio-button>
-          <el-radio-button value="none">无带外</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
+  <Dialog v-model:open="visible">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[560px]">
+      <DialogHeader>
+        <DialogTitle>{{ claimMac ? `认领机器 ${claimMac}` : '注册机器' }}</DialogTitle>
+        <DialogDescription v-if="!claimMac">录入机器的 BMC 寻址与凭证，注册后自动开始盘查。</DialogDescription>
+        <DialogDescription v-else>为 sighting 补齐登记信息完成收编。</DialogDescription>
+      </DialogHeader>
 
-      <el-form-item v-if="isHeadless" label="装机网卡 MAC（机器身份，装机走 PXE + WoL/人工上电）">
-        <el-input v-model="headlessMac" placeholder="AA:BB:CC:DD:EE:01" class="mono" :disabled="!!claimMac" />
-        <div class="hint" style="margin-top: 4px">
-          <div v-if="claimMac">已取自该机器 PXE 引导时上报的 MAC（引擎认领以此为身份，不可改）。</div>
-          无带外机器以合成地址 none://&lt;mac&gt; 注册；装机网段需 PXE 可达，关机唤醒依赖
-          WoL（跨网段需引擎侧 edge 代发）或人工上电兜底。
+      <Alert v-if="claimMac" class="border-blue-500/30 bg-blue-500/5">
+        <AlertTitle>{{ claimTip }}</AlertTitle>
+        <AlertDescription v-if="isHeadless" class="text-xs">
+          已取自该机器 PXE 引导时上报的 MAC（引擎认领以此为身份，不可改）。
+        </AlertDescription>
+      </Alert>
+
+      <form class="grid gap-4" @submit.prevent="submit">
+        <div class="grid gap-1.5">
+          <Label>带外协议</Label>
+          <RadioGroup
+            v-model="protocol"
+            class="flex flex-wrap gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-2.5 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+          >
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="auto" /> 自动（Redfish→IPMI）</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="redfish" /> Redfish</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="ipmi" /> IPMI</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="fake" /> 演示</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="none" /> 无带外</Label>
+          </RadioGroup>
         </div>
-      </el-form-item>
-      <el-form-item v-else label="BMC 地址（host 或 host:port）">
-        <el-input v-model="bmcAddress" placeholder="203.0.113.10 或 203.0.113.10:443" class="mono" />
-      </el-form-item>
 
-      <template v-if="!isHeadless">
-      <el-form-item label="BMC 凭证">
-        <el-radio-group v-model="credMode">
-          <el-radio-button value="new">新建凭证</el-radio-button>
-          <el-radio-button value="existing">使用已有凭证</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <template v-if="credMode === 'new'">
-        <el-form-item label="凭证名称">
-          <el-input v-model="credName" placeholder="如 bmc-rack01（唯一）" />
-        </el-form-item>
-        <el-row :gutter="10">
-          <el-col :span="12">
-            <el-form-item label="用户名">
-              <el-input v-model="credUser" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="密码">
-              <el-input v-model="credPass" type="password" show-password />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <div class="hint">密码仅用于提交：加密存储后任何接口都不会回显，请自行妥善保管。</div>
-      </template>
-      <el-form-item v-else label="选择 BMC 凭证">
-        <el-select
-          v-model="credId"
-          filterable
-          placeholder="选择凭证"
-          style="width: 100%"
-        >
-          <el-option
-            v-for="c in bmcCreds"
-            :key="c.id"
-            :value="c.id"
-            :label="`${c.name}（${c.id}）`"
-          />
-        </el-select>
-      </el-form-item>
+        <div v-if="isHeadless" class="grid gap-1.5">
+          <Label for="headless-mac">装机网卡 MAC（机器身份，装机走 PXE + WoL/人工上电）</Label>
+          <Input id="headless-mac" v-model="headlessMac" placeholder="AA:BB:CC:DD:EE:01" class="font-mono" :disabled="!!claimMac" />
+          <p class="text-xs leading-relaxed text-muted-foreground">
+            无带外机器以合成地址 none://&lt;mac&gt; 注册；装机网段需 PXE 可达，关机唤醒依赖
+            WoL（跨网段需引擎侧 edge 代发）或人工上电兜底。
+          </p>
+        </div>
+        <div v-else class="grid gap-1.5">
+          <Label for="bmc-address">BMC 地址（host 或 host:port）</Label>
+          <Input id="bmc-address" v-model="bmcAddress" placeholder="203.0.113.10 或 203.0.113.10:443" class="font-mono" />
+        </div>
 
-      <el-collapse>
-        <el-collapse-item name="ssh">
-          <template #title>带内 SSH（可选，用于分区级盘查）</template>
-          <el-form-item label="SSH 凭证">
-            <el-select
-              v-model="sshCredId"
-              clearable
-              filterable
-              placeholder="选择 SSH 凭证"
-              style="width: 100%"
+        <template v-if="!isHeadless">
+          <div class="grid gap-1.5">
+            <Label>BMC 凭证</Label>
+            <RadioGroup
+              v-model="credMode"
+              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
             >
-              <el-option
-                v-for="c in sshCreds"
-                :key="c.id"
-                :value="c.id"
-                :label="`${c.name}（${c.id}）`"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="带内地址">
-            <el-input v-model="sshAddress" placeholder="机器业务网 IP（与 BMC 带外网络无关）" class="mono" />
-          </el-form-item>
-        </el-collapse-item>
-      </el-collapse>
-      </template>
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="new" /> 新建凭证</Label>
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="existing" /> 使用已有凭证</Label>
+            </RadioGroup>
+          </div>
 
-      <el-form-item label="标签" class="label-item">
-        <el-input
-          v-model="labelInput"
-          placeholder="k=v，回车添加（如 env=prod）"
-          @keyup.enter="addLabel"
-        />
-        <el-tag
-          v-for="chip in labelChips"
-          :key="chip"
-          closable
-          size="small"
-          class="chip"
-          @close="labelChips = labelChips.filter((c) => c !== chip)"
-        >
-          {{ chip }}
-        </el-tag>
-      </el-form-item>
-    </el-form>
+          <div v-if="credMode === 'new'" class="grid gap-4">
+            <div class="grid gap-1.5">
+              <Label for="cred-name">凭证名称</Label>
+              <Input id="cred-name" v-model="credName" placeholder="如 bmc-rack01（唯一）" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="grid gap-1.5">
+                <Label for="cred-user">用户名</Label>
+                <Input id="cred-user" v-model="credUser" />
+              </div>
+              <div class="grid gap-1.5">
+                <Label for="cred-pass">密码</Label>
+                <Input id="cred-pass" v-model="credPass" type="password" />
+              </div>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              密码仅用于提交：加密存储后任何接口都不会回显，请自行妥善保管。
+            </p>
+          </div>
+          <div v-else class="grid gap-1.5">
+            <Label>选择 BMC 凭证</Label>
+            <Select v-model="credId">
+              <SelectTrigger>
+                <SelectValue placeholder="选择凭证" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="c in bmcCreds" :key="c.id" :value="c.id">
+                  {{ c.name }}（{{ c.id }}）
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-    <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="submit">
-        {{ claimMac ? '认领' : '注册' }}
-      </el-button>
-    </template>
-  </el-dialog>
+          <Collapsible>
+            <CollapsibleTrigger
+              class="group flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
+            >
+              带内 SSH（可选，用于分区级盘查）
+              <ChevronDown class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent class="grid gap-4 pt-3">
+              <div class="grid gap-1.5">
+                <Label>SSH 凭证</Label>
+                <Select v-model="sshCredId">
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择 SSH 凭证" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="c in sshCreds" :key="c.id" :value="c.id">
+                      {{ c.name }}（{{ c.id }}）
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="grid gap-1.5">
+                <Label for="ssh-address">带内地址</Label>
+                <Input id="ssh-address" v-model="sshAddress" placeholder="机器业务网 IP（与 BMC 带外网络无关）" class="font-mono" />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </template>
+
+        <div class="grid gap-1.5">
+          <Label for="machine-label">标签</Label>
+          <Input id="machine-label" v-model="labelInput" placeholder="k=v，回车添加（如 env=prod）" @keyup.enter="addLabel" />
+          <div v-if="labelChips.length > 0" class="flex flex-wrap gap-1.5">
+            <span
+              v-for="chip in labelChips"
+              :key="chip"
+              class="inline-flex items-center gap-1 rounded-md border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+            >
+              {{ chip }}
+              <button class="transition-opacity hover:opacity-70" @click="labelChips = labelChips.filter((c) => c !== chip)">
+                <X class="size-3" />
+              </button>
+            </span>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="visible = false">取消</Button>
+          <Button type="submit" :disabled="submitting">
+            <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+            {{ claimMac ? '认领' : '注册' }}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
 </template>
-
-<style scoped>
-.mb {
-  margin-bottom: 12px;
-}
-.hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: -6px;
-}
-.label-item :deep(.el-form-item__content) {
-  flex-wrap: wrap;
-}
-.chip {
-  margin-top: 6px;
-  margin-right: 6px;
-}
-.mono :deep(input) {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
-</style>
