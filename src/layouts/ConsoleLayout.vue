@@ -22,7 +22,6 @@ import {
 import { useConnectionStore } from '@/stores/connection'
 import { copyToClipboard } from '@/utils/clipboard'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
-import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -177,7 +176,6 @@ async function copyPassword() {
         class="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur"
       >
         <SidebarTrigger class="-ml-1" />
-        <Separator orientation="vertical" class="mr-1 !h-6" />
         <div class="ms-auto flex items-center gap-2">
           <button
             class="search-entry flex h-8 w-60 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
