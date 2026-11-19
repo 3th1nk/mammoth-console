@@ -8,6 +8,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import { router } from './router'
 import { ConsoleApiError } from './api/problem'
+import './styles/index.css'
 import './styles.css'
 
 const app = createApp(App)

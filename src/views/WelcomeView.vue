@@ -1,30 +1,36 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { Eye, EyeOff, LoaderCircle } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { useConnectionStore } from '@/stores/connection'
 import { errorMessage } from '@/api/problem'
 import { formatVersion } from '@/utils/format'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 const conn = useConnectionStore()
 const router = useRouter()
 
 const baseUrl = ref(conn.baseUrl)
 const token = ref('')
+const showToken = ref(false)
 const probing = ref(false)
 
 async function connect() {
   if (!token.value.trim()) {
-    ElMessage.warning('请填写 API Token（引擎地址留空即同源访问）')
+    toast.warning('请填写 API Token（引擎地址留空即同源访问）')
     return
   }
   probing.value = true
   try {
     const caps = await conn.connect(baseUrl.value.trim(), token.value.trim())
-    ElMessage.success(`已连接引擎 ${formatVersion(caps.version)}`)
+    toast.success(`已连接引擎 ${formatVersion(caps.version)}`)
     router.push({ name: 'dashboard' })
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     probing.value = false
   }
@@ -32,81 +38,59 @@ async function connect() {
 </script>
 
 <template>
-  <div class="welcome">
-    <el-card class="card" shadow="never">
-      <div class="hero">
-        <img src="/mammoth.svg" alt="mammoth" />
-        <h1>Mammoth Console</h1>
-        <p class="sub">裸金属装机引擎 · 官方控制台</p>
-      </div>
+  <div class="flex min-h-svh items-center justify-center bg-muted/40 p-4">
+    <Card class="w-full max-w-[460px]">
+      <CardContent class="flex flex-col gap-5">
+        <div class="flex flex-col items-center gap-2 pt-2 text-center">
+          <img src="/mammoth.svg" alt="mammoth" class="size-16" />
+          <h1 class="text-xl font-semibold tracking-tight">Mammoth Console</h1>
+          <p class="text-sm text-muted-foreground">裸金属装机引擎 · 官方控制台</p>
+        </div>
 
-      <el-form label-position="top" @submit.prevent="connect">
-        <el-form-item label="引擎地址">
-          <el-input v-model="baseUrl" placeholder="留空 = 与控制台同源（推荐）" class="mono" />
-          <div class="hint">
-            同源部署下留空即可（dev 由 vite 代理 /api，生产由 Caddy 反代）；跨源直填引擎地址会被浏览器 CORS 拦截。
+        <form class="flex flex-col gap-4" @submit.prevent="connect">
+          <div class="grid gap-1.5">
+            <Label for="base-url">引擎地址</Label>
+            <Input
+              id="base-url"
+              v-model="baseUrl"
+              placeholder="留空 = 与控制台同源（推荐）"
+              class="font-mono"
+            />
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              同源部署下留空即可（dev 由 vite 代理 /api，生产由 Caddy
+              反代）；跨源直填引擎地址会被浏览器 CORS 拦截。
+            </p>
           </div>
-        </el-form-item>
-        <el-form-item label="API Token">
-          <el-input
-            v-model="token"
-            type="password"
-            show-password
-            placeholder="MAMMOTH_API_TOKEN"
-          />
-          <div class="hint">
-            即引擎部署时设置的 MAMMOTH_API_TOKEN；token 即引擎管理员权限，请勿在不受信终端保存。
+          <div class="grid gap-1.5">
+            <Label for="token">API Token</Label>
+            <div class="relative">
+              <Input
+                id="token"
+                v-model="token"
+                :type="showToken ? 'text' : 'password'"
+                placeholder="MAMMOTH_API_TOKEN"
+                class="pr-10"
+              />
+              <button
+                type="button"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                @click="showToken = !showToken"
+              >
+                <Eye v-if="!showToken" class="size-4" />
+                <EyeOff v-else class="size-4" />
+              </button>
+            </div>
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              即引擎部署时设置的 MAMMOTH_API_TOKEN；token
+              即引擎管理员权限，请勿在不受信终端保存。
+            </p>
           </div>
-        </el-form-item>
-        <el-button type="primary" native-type="submit" :loading="probing" class="connect-btn">
-          连接
-        </el-button>
-      </el-form>
-    </el-card>
+          <Button type="submit" class="mt-1 w-full" :disabled="probing">
+            <LoaderCircle v-if="probing" class="size-4 animate-spin" />
+            连接
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   </div>
 </template>
-
-<style scoped>
-.welcome {
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--el-fill-color-light);
-}
-.card {
-  width: 460px;
-  padding: 8px 12px 4px;
-}
-.hero {
-  text-align: center;
-  margin-bottom: 20px;
-}
-.hero img {
-  width: 72px;
-  height: 72px;
-}
-.hero h1 {
-  font-size: 20px;
-  margin: 10px 0 4px;
-  color: var(--el-text-color-primary);
-}
-.sub {
-  color: var(--el-text-color-secondary);
-  margin: 0;
-  font-size: 13px;
-}
-.hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.5;
-  margin-top: 4px;
-}
-.connect-btn {
-  width: 100%;
-  margin-top: 6px;
-}
-.mono :deep(input) {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
-</style>
