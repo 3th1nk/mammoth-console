@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { Check, ChevronsUpDown, ChevronDown, ChevronRight, Plus, RefreshCcw } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { eventsListKey, eventDomain, webhooksKey } from '@/api/queryKeys'
@@ -49,6 +50,7 @@ import { formatTime } from '@/utils/format'
 
 type Webhook = components['schemas']['Webhook']
 
+const { t } = useI18n()
 const queryClient = useQueryClient()
 const activeTab = ref<'events' | 'webhooks'>('events')
 
@@ -127,6 +129,8 @@ function prevPage() {
   cursor.value = prev
 }
 
+const RESOURCE_TYPES = ['job', 'task', 'machine', 'credential', 'pending', 'webhook']
+
 // ── Webhooks 管理 ───────────────────────────────────────────────────────────
 const hooksQuery = useQuery({
   queryKey: webhooksKey,
@@ -147,12 +151,12 @@ function openCreate() {
 
 async function submitCreate() {
   if (!/^https?:\/\//.test(form.url.trim())) {
-    toast.warning('回调地址需为 http(s) URL')
+    toast.warning(t('events.urlRequired'))
     return
   }
   creating.value = true
   try {
-    const types = form.types.map((t) => t.trim()).filter(Boolean)
+    const types = form.types.map((x) => x.trim()).filter(Boolean)
     const data = await unwrap(await getClient().POST('/api/v1/webhooks', {
       body: {
         url: form.url.trim(),
@@ -176,28 +180,26 @@ async function submitCreate() {
 
 async function removeHook(h: Webhook) {
   const ok = await confirm({
-    title: '删除 webhook',
-    description: `删除后不再向 ${h.url} 投递事件。确定删除？`,
-    confirmText: '删除',
+    title: t('common.delete'),
+    description: t('events.deleteConfirmDesc', { url: h.url }),
+    confirmText: t('common.delete'),
     destructive: true,
   })
   if (!ok) return
   try {
     await unwrap(await getClient().DELETE('/api/v1/webhooks/{id}', { params: { path: { id: h.id } } }))
-    toast.success('已删除')
+    toast.success(t('common.deleted'))
     void hooksQuery.refetch()
   } catch (e) {
     toast.error(errorMessage(e))
   }
 }
 
-const RESOURCE_TYPES = ['job', 'task', 'machine', 'credential', 'pending', 'webhook']
-
 function copySecret() {
   if (createdSecret.value?.secret) {
     void copyToClipboard(createdSecret.value.secret).then((ok) => {
-      if (ok) toast.success('已复制到剪贴板')
-      else toast.warning('复制失败，请手动选中复制')
+      if (ok) toast.success(t('common.copied'))
+      else toast.warning(t('common.copyFailed'))
     })
   }
 }
@@ -207,18 +209,18 @@ function copySecret() {
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">事件</h2>
-        <p class="text-sm text-muted-foreground">引擎事件审计与 Webhooks 订阅</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('events.title') }}</h2>
+        <p class="text-sm text-muted-foreground">{{ t('events.subtitle') }}</p>
       </div>
       <Button variant="outline" size="sm" @click="queryClient.invalidateQueries({ queryKey: eventDomain }); queryClient.invalidateQueries({ queryKey: webhooksKey })">
-        <RefreshCcw class="size-4" /> 刷新
+        <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
       </Button>
     </div>
 
     <Tabs v-model="activeTab" class="gap-3">
       <TabsList class="w-fit">
-        <TabsTrigger value="events">事件查询</TabsTrigger>
-        <TabsTrigger value="webhooks">Webhooks 订阅</TabsTrigger>
+        <TabsTrigger value="events">{{ t('events.tabEvents') }}</TabsTrigger>
+        <TabsTrigger value="webhooks">{{ t('events.tabWebhooks') }}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="events" class="mt-0">
@@ -230,16 +232,16 @@ function copySecret() {
                 @update:model-value="(v: unknown) => { rtFilter = v === 'all' || v == null ? '' : String(v); resetPaging() }"
               >
                 <SelectTrigger class="w-[150px]">
-                  <SelectValue placeholder="全部资源类型" />
+                  <SelectValue :placeholder="t('events.filterAllRt')" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部资源类型</SelectItem>
+                  <SelectItem value="all">{{ t('events.filterAllRt') }}</SelectItem>
                   <SelectItem v-for="rt in RESOURCE_TYPES" :key="rt" :value="rt">{{ resourceTypeLabel(rt) }}</SelectItem>
                 </SelectContent>
               </Select>
               <Input
                 v-model="ridInput"
-                placeholder="资源 ID 过滤（如 job_x9k2）"
+                :placeholder="t('events.ridPlaceholder')"
                 class="w-[240px] font-mono"
                 @keyup.enter="ridFilter = ridInput; resetPaging()"
               />
@@ -247,40 +249,41 @@ function copySecret() {
                 <PopoverTrigger as-child>
                   <Button variant="outline" role="combobox" class="w-[260px] justify-between font-normal">
                     <span class="truncate">
-                      {{ typeFilter ? `${eventTypeLabel(typeFilter)}（${typeFilter}）` : '全部事件类型' }}
+                      {{ typeFilter ? `${eventTypeLabel(typeFilter)}（${typeFilter}）` : t('events.typeAll') }}
                     </span>
                     <ChevronsUpDown class="size-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent class="w-[320px] p-0" align="start">
                   <Command>
-                    <CommandInput v-model="typeSearch" placeholder="搜索或输入清单外新类型…" />
+                    <CommandInput v-model="typeSearch" placeholder="Search or type a new type…" />
                     <CommandList class="max-h-[300px]">
                       <CommandEmpty>
                         <button
+                          v-if="typeSearch.trim()"
                           class="flex w-full items-center justify-center gap-1.5 px-3 py-2 text-sm text-primary"
                           @click="setType(typeSearch.trim())"
                         >
-                          <Plus class="size-3.5" /> 使用「{{ typeSearch.trim() }}」过滤
+                          <Plus class="size-3.5" /> {{ t('events.typeUseFilter', { v: typeSearch.trim() }) }}
                         </button>
                       </CommandEmpty>
                       <CommandGroup v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :heading="g.label">
                         <CommandItem
-                          v-for="t in g.types"
-                          :key="t.value"
-                          :value="`${t.label} ${t.value}`"
-                          @select="setType(t.value)"
+                          v-for="x in g.types"
+                          :key="x.value"
+                          :value="`${x.label} ${x.value}`"
+                          @select="setType(x.value)"
                         >
-                          <Check class="size-4" :class="typeFilter === t.value ? 'opacity-100' : 'opacity-0'" />
-                          <span>{{ t.label }}</span>
-                          <span class="ml-auto font-mono text-[11px] text-muted-foreground">{{ t.value }}</span>
+                          <Check class="size-4" :class="typeFilter === x.value ? 'opacity-100' : 'opacity-0'" />
+                          <span>{{ x.label }}</span>
+                          <span class="ml-auto font-mono text-[11px] text-muted-foreground">{{ x.value }}</span>
                         </CommandItem>
                       </CommandGroup>
                     </CommandList>
                   </Command>
                 </PopoverContent>
               </Popover>
-              <Button size="sm" @click="ridFilter = ridInput; resetPaging()">查询</Button>
+              <Button size="sm" @click="ridFilter = ridInput; resetPaging()">{{ t('common.search') }}</Button>
             </div>
 
             <Skeleton v-if="eventsQuery.isPending.value" class="h-56 w-full" />
@@ -289,11 +292,11 @@ function copySecret() {
                 <TableHeader>
                   <TableRow class="bg-muted/50 hover:bg-muted/50">
                     <TableHead class="w-10" />
-                    <TableHead class="w-20">#</TableHead>
-                    <TableHead class="w-28">资源类型</TableHead>
-                    <TableHead class="min-w-[160px]">资源 ID</TableHead>
-                    <TableHead class="min-w-[200px]">事件</TableHead>
-                    <TableHead class="w-44">时间</TableHead>
+                    <TableHead class="w-20">{{ t('events.colId') }}</TableHead>
+                    <TableHead class="w-28">{{ t('events.colResourceType') }}</TableHead>
+                    <TableHead class="min-w-[160px]">{{ t('events.colResourceId') }}</TableHead>
+                    <TableHead class="min-w-[200px]">{{ t('events.colEvent') }}</TableHead>
+                    <TableHead class="w-44">{{ t('events.colTime') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -325,11 +328,11 @@ function copySecret() {
                   </template>
                 </TableBody>
               </Table>
-              <EmptyState v-if="eventRows.length === 0" description="没有匹配的事件" />
+              <EmptyState v-if="eventRows.length === 0" :description="t('events.noMatch')" />
             </div>
 
             <Pager
-              hint="游标分页 · 最新在前，下一页向更早翻"
+              :hint="t('events.pagerHint')"
               :has-prev="cursorStack.length > 0"
               :has-next="!!nextCursor"
               @prev="prevPage"
@@ -343,19 +346,19 @@ function copySecret() {
         <Card>
           <CardContent class="flex flex-col gap-3">
             <div>
-              <Button size="sm" @click="openCreate"><Plus class="size-4" /> 新建订阅</Button>
+              <Button size="sm" @click="openCreate"><Plus class="size-4" /> {{ t('events.create') }}</Button>
             </div>
             <Skeleton v-if="hooksQuery.isPending.value" class="h-40 w-full" />
             <div v-else class="overflow-hidden rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow class="bg-muted/50 hover:bg-muted/50">
-                    <TableHead class="min-w-[240px]">回调地址</TableHead>
-                    <TableHead class="min-w-[180px]">事件类型</TableHead>
-                    <TableHead class="min-w-[120px]">资源过滤</TableHead>
-                    <TableHead class="w-24">投递水位</TableHead>
-                    <TableHead class="w-20">连续失败</TableHead>
-                    <TableHead class="w-20">操作</TableHead>
+                    <TableHead class="min-w-[240px]">{{ t('events.colUrl') }}</TableHead>
+                    <TableHead class="min-w-[180px]">{{ t('events.colTypes') }}</TableHead>
+                    <TableHead class="min-w-[120px]">{{ t('events.colResourceFilter') }}</TableHead>
+                    <TableHead class="w-24">{{ t('events.colWatermark') }}</TableHead>
+                    <TableHead class="w-20">{{ t('events.colFailCount') }}</TableHead>
+                    <TableHead class="w-20">{{ t('machines.colActions') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -364,13 +367,13 @@ function copySecret() {
                     <TableCell>
                       <div v-if="row.types && row.types.length > 0" class="flex flex-wrap gap-1">
                         <span
-                          v-for="t in row.types"
-                          :key="t"
+                          v-for="x in row.types"
+                          :key="x"
                           class="rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-secondary-foreground"
-                          :title="t"
-                        >{{ eventTypeLabel(t) }}</span>
+                          :title="x"
+                        >{{ eventTypeLabel(x) }}</span>
                       </div>
-                      <span v-else class="text-muted-foreground">全部事件</span>
+                      <span v-else class="text-muted-foreground">{{ t('events.allEvents') }}</span>
                     </TableCell>
                     <TableCell>
                       <span v-if="row.resource_id" class="font-mono text-xs">{{ row.resource_id }}</span>
@@ -391,16 +394,14 @@ function copySecret() {
                         class="h-8 text-destructive hover:text-destructive"
                         @click.stop="removeHook(row)"
                       >
-                        删除
+                        {{ t('common.delete') }}
                       </Button>
                     </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
-              <EmptyState v-if="hookRows.length === 0" description="还没有订阅">
-                <p class="text-xs text-muted-foreground">
-                  新建订阅后，引擎以 HMAC-SHA256 签名向你的回调地址投递事件。
-                </p>
+              <EmptyState v-if="hookRows.length === 0" :description="t('events.hooksEmpty')">
+                <p class="text-xs text-muted-foreground">{{ t('events.hooksEmptyHint') }}</p>
               </EmptyState>
             </div>
           </CardContent>
@@ -411,49 +412,45 @@ function copySecret() {
     <Dialog :open="createVisible" @update:open="(v: boolean) => (createVisible = v)">
       <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>新建 webhook 订阅</DialogTitle>
-          <DialogDescription>引擎以 HMAC-SHA256 签名投递事件。</DialogDescription>
+          <DialogTitle>{{ t('events.createTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('events.createDesc') }}</DialogDescription>
         </DialogHeader>
         <form class="grid gap-4" @submit.prevent="submitCreate">
           <div class="grid gap-1.5">
-            <Label for="hook-url">回调地址</Label>
-            <Input id="hook-url" v-model="form.url" placeholder="https://ops.example.com/mammoth-hook" class="font-mono" />
+            <Label for="hook-url">{{ t('events.urlLabel') }}</Label>
+            <Input id="hook-url" v-model="form.url" :placeholder="t('events.urlPlaceholder')" class="font-mono" />
           </div>
           <div class="grid gap-1.5">
-            <Label>事件类型（可选；留空投递全部）</Label>
+            <Label>{{ t('events.typesLabel') }}</Label>
             <div class="rounded-lg border p-3">
               <div class="grid gap-2.5">
                 <div v-for="g in EVENT_TYPE_GROUPS" :key="g.label">
                   <p class="mb-1.5 text-xs font-medium text-muted-foreground">{{ g.label }}</p>
                   <div class="flex flex-wrap gap-x-4 gap-y-2">
-                    <label v-for="t in g.types" :key="t.value" class="flex cursor-pointer items-center gap-2 text-sm" :title="t.value">
+                    <label v-for="x in g.types" :key="x.value" class="flex cursor-pointer items-center gap-2 text-sm" :title="x.value">
                       <Checkbox
-                        :model-value="form.types.includes(t.value)"
+                        :model-value="form.types.includes(x.value)"
                         @update:model-value="(v: boolean | 'indeterminate') => {
                           if (v === 'indeterminate') return
-                          form.types = v ? [...form.types, t.value] : form.types.filter((x) => x !== t.value)
+                          form.types = v ? [...form.types, x.value] : form.types.filter((y) => y !== x.value)
                         }"
                       />
-                      {{ t.label }}
+                      {{ x.label }}
                     </label>
                   </div>
                 </div>
               </div>
-              <p class="mt-2.5 text-xs text-muted-foreground">
-                按资源类型分组；投递按精确匹配，清单之外的新类型暂不支持在表单勾选（可后续编辑）。
-              </p>
+              <p class="mt-2.5 text-xs text-muted-foreground">{{ t('events.typesHint') }}</p>
             </div>
           </div>
           <div class="grid gap-1.5">
-            <Label for="hook-rid">资源 ID 过滤（可选；仅投递该资源的事件）</Label>
-            <Input id="hook-rid" v-model="form.resource_id" placeholder="如 mch_xxxx（跟踪某台机器）或 job_x9k2（跟踪某个作业）" class="font-mono" />
-            <p class="text-xs text-muted-foreground">
-              仅支持单个资源 ID 精确匹配；要跟踪多个资源请为每个资源各建一条订阅，留空则投递全部资源的事件。
-            </p>
+            <Label for="hook-rid">{{ t('events.ridLabel') }}</Label>
+            <Input id="hook-rid" v-model="form.resource_id" :placeholder="t('events.ridLabelPlaceholder')" class="font-mono" />
+            <p class="text-xs text-muted-foreground">{{ t('events.ridHint') }}</p>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" @click="createVisible = false">取消</Button>
-            <Button type="submit" :disabled="creating">创建</Button>
+            <Button type="button" variant="outline" @click="createVisible = false">{{ t('common.cancel') }}</Button>
+            <Button type="submit" :disabled="creating">{{ t('events.created') }}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -462,14 +459,14 @@ function copySecret() {
     <Dialog :open="createdSecret !== null" @update:open="(v: boolean) => { if (!v) createdSecret = null }">
       <DialogContent class="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>签名密钥（仅此一次）</DialogTitle>
-          <DialogDescription>HMAC-SHA256 签名密钥不会再次显示，请立即保存。</DialogDescription>
+          <DialogTitle>{{ t('events.secretTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('events.secretDesc') }}</DialogDescription>
         </DialogHeader>
         <div class="break-all rounded-md bg-muted px-3 py-2.5 font-mono text-sm">{{ createdSecret?.secret }}</div>
         <p class="text-xs text-muted-foreground">{{ createdSecret?.url }}</p>
         <DialogFooter>
-          <Button variant="outline" @click="copySecret">复制</Button>
-          <Button @click="createdSecret = null">我已保存</Button>
+          <Button variant="outline" @click="copySecret">{{ t('common.copy') }}</Button>
+          <Button @click="createdSecret = null">{{ t('events.saved') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

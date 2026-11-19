@@ -547,6 +547,7 @@ export default {
     ridLabelPlaceholder: '如 mch_xxxx（跟踪某台机器）或 job_x9k2（跟踪某个作业）',
     ridHint: '仅支持单个资源 ID 精确匹配；多个资源请各建一条订阅，留空投递全部。',
     created: '创建',
+    deleteConfirmDesc: '删除后不再向 {url} 投递事件。确定删除？',
     urlRequired: '回调地址需为 http(s) URL',
     secretTitle: '签名密钥（仅此一次）',
     secretDesc: 'HMAC-SHA256 签名密钥不会再次显示，请立即保存。',

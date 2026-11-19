@@ -546,6 +546,7 @@ export default {
     ridLabelPlaceholder: 'e.g. mch_xxxx (track one machine) or job_x9k2 (one job)',
     ridHint: 'Single resource ID exact match only; create one subscription per resource, empty delivers all.',
     created: 'Create',
+    deleteConfirmDesc: 'Events will no longer be delivered to {url}. Delete?',
     urlRequired: 'Callback URL must be an http(s) URL',
     secretTitle: 'Signing secret (one time)',
     secretDesc: 'The HMAC-SHA256 signing secret will never be shown again — save it now.',
