@@ -30,8 +30,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Input } from '@/components/ui/input'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 
 /**
  * 机器动作入口。
@@ -352,15 +352,15 @@ function submitMedia() {
         <div class="grid gap-4">
           <div class="grid gap-1.5">
             <Label>设备</Label>
-            <RadioGroup
+            <SegmentedControl
               v-model="bootDevice"
-              class="grid grid-cols-2 gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-2 [&_[data-slot=radio-group-item]]:text-sm"
-            >
-              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="pxe" /> PXE</Label>
-              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="disk" /> 磁盘</Label>
-              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="cdrom" /> 虚拟介质</Label>
-              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="bios" /> 进 BIOS</Label>
-            </RadioGroup>
+              :options="[
+                { value: 'pxe', label: 'PXE' },
+                { value: 'disk', label: '磁盘' },
+                { value: 'cdrom', label: '虚拟介质' },
+                { value: 'bios', label: '进 BIOS' },
+              ]"
+            />
           </div>
           <div class="flex items-center gap-3">
             <Switch id="boot-once" v-model:checked="bootOnce" />

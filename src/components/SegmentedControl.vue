@@ -23,7 +23,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
     type="single"
     :model-value="modelValue"
     :disabled="disabled"
-    class="bg-muted rounded-lg p-1"
+    class="flex-wrap bg-muted rounded-lg p-1"
     @update:model-value="(v: unknown) => { if (v != null) emit('update:modelValue', String(v)) }"
   >
     <ToggleGroupItem

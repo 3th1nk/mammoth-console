@@ -20,8 +20,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 
 /**
  * 注册机器表单（POST /machines 与零注册 claim 复用，docs/03-product-design.md §7.2/§7.3）。
@@ -230,16 +230,16 @@ async function submit() {
       <form class="grid gap-4" @submit.prevent="submit">
         <div class="grid gap-1.5">
           <Label>带外协议</Label>
-          <RadioGroup
+          <SegmentedControl
             v-model="protocol"
-            class="flex flex-wrap gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-2.5 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-          >
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="auto" /> 自动（Redfish→IPMI）</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="redfish" /> Redfish</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="ipmi" /> IPMI</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="fake" /> 演示</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="none" /> 无带外</Label>
-          </RadioGroup>
+            :options="[
+              { value: 'auto', label: '自动（Redfish→IPMI）' },
+              { value: 'redfish', label: 'Redfish' },
+              { value: 'ipmi', label: 'IPMI' },
+              { value: 'fake', label: '演示' },
+              { value: 'none', label: '无带外' },
+            ]"
+          />
         </div>
 
         <div v-if="isHeadless" class="grid gap-1.5">
@@ -258,13 +258,13 @@ async function submit() {
         <template v-if="!isHeadless">
           <div class="grid gap-1.5">
             <Label>BMC 凭证</Label>
-            <RadioGroup
+            <SegmentedControl
               v-model="credMode"
-              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-            >
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="new" /> 新建凭证</Label>
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="existing" /> 使用已有凭证</Label>
-            </RadioGroup>
+              :options="[
+                { value: 'new', label: '新建凭证' },
+                { value: 'existing', label: '使用已有凭证' },
+              ]"
+            />
           </div>
 
           <div v-if="credMode === 'new'" class="grid gap-4">

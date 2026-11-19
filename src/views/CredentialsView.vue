@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -191,19 +191,13 @@ async function remove(c: Credential) {
           </div>
           <div class="grid gap-1.5">
             <Label>类型</Label>
-            <RadioGroup
+            <SegmentedControl
               v-model="form.type"
-              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-2 [&_[data-slot=radio-group-item]]:text-sm"
-            >
-              <Label
-                v-for="t in ['bmc', 'ssh'] as const"
-                :key="t"
-                class="flex flex-1 cursor-pointer items-center gap-2 font-normal"
-              >
-                <RadioGroupItem :value="t" />
-                {{ TYPE_LABEL[t] }}
-              </Label>
-            </RadioGroup>
+              :options="[
+                { value: 'bmc', label: 'BMC（带外）' },
+                { value: 'ssh', label: 'SSH（带内）' },
+              ]"
+            />
           </div>
           <div class="grid gap-1.5">
             <Label for="cred-user">用户名</Label>
