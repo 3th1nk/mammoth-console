@@ -3,6 +3,8 @@ import type { ToasterProps } from "vue-sonner"
 import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon, XIcon } from "@lucide/vue"
 import { cn } from "cn"
 import { Toaster as Sonner } from "vue-sonner"
+// vue-sonner v2 样式需显式引入——缺失时 toast 是无样式裸 div,横贯页面
+import "vue-sonner/style.css"
 
 const props = defineProps<ToasterProps>()
 </script>
