@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { RefreshCcw, Search } from 'lucide-vue-next'
 import { useQuery } from '@tanstack/vue-query'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { jobListKey } from '@/api/queryKeys'
@@ -31,6 +32,7 @@ type JobType = components['schemas']['JobType']
 type JobState = components['schemas']['JobState']
 
 const PAGE_SIZE = 50
+const { t } = useI18n()
 const router = useRouter()
 
 const typeFilter = ref<JobType | ''>('')
@@ -73,17 +75,17 @@ const stateModel = computed({
 })
 
 const TYPE_OPTIONS = [
-  { value: 'install', label: '装机' },
-  { value: 'power', label: '电源' },
-  { value: 'discover', label: '盘查' },
+  { value: 'install', label: t('jobs.typeInstall') },
+  { value: 'power', label: t('jobs.typePower') },
+  { value: 'discover', label: t('jobs.typeDiscover') },
 ]
 const STATE_OPTIONS = [
-  { value: 'pending', label: '排队中' },
-  { value: 'running', label: '执行中' },
-  { value: 'succeeded', label: '全部成功' },
-  { value: 'partial', label: '部分成功' },
-  { value: 'failed', label: '失败' },
-  { value: 'canceled', label: '已取消' },
+  { value: 'pending', label: t('states.jobPending') },
+  { value: 'running', label: t('states.jobRunning') },
+  { value: 'succeeded', label: t('states.jobSucceeded') },
+  { value: 'partial', label: t('states.jobPartial') },
+  { value: 'failed', label: t('states.jobFailed') },
+  { value: 'canceled', label: t('states.jobCanceled') },
 ]
 
 function resetPaging() {
@@ -108,9 +110,9 @@ function open(job: Job) {
 }
 
 const JOB_TYPE_LABEL: Record<string, string> = {
-  install: '装机',
-  power: '电源',
-  discover: '盘查',
+  install: t('jobs.typeInstall'),
+  power: t('jobs.typePower'),
+  discover: t('jobs.typeDiscover'),
 }
 </script>
 
@@ -118,11 +120,11 @@ const JOB_TYPE_LABEL: Record<string, string> = {
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">任务</h2>
-        <p class="text-sm text-muted-foreground">装机 / 电源 / 盘查作业与进度</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('jobs.title') }}</h2>
+        <p class="text-sm text-muted-foreground">{{ t('jobs.subtitle') }}</p>
       </div>
       <Button variant="outline" size="sm" @click="query.refetch()">
-        <RefreshCcw class="size-4" /> 刷新
+        <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
       </Button>
     </div>
 
@@ -135,23 +137,23 @@ const JOB_TYPE_LABEL: Record<string, string> = {
         <div class="flex flex-wrap items-center gap-2">
           <Select v-model="typeModel" @update:model-value="resetPaging">
             <SelectTrigger class="w-[130px]">
-              <SelectValue placeholder="全部类型" />
+              <SelectValue :placeholder="t('jobs.filterAllTypes')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部类型</SelectItem>
-              <SelectItem v-for="t in TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</SelectItem>
+              <SelectItem value="all">{{ t('jobs.filterAllTypes') }}</SelectItem>
+              <SelectItem v-for="o in TYPE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
             </SelectContent>
           </Select>
           <Select v-model="stateModel" @update:model-value="resetPaging">
             <SelectTrigger class="w-[140px]">
-              <SelectValue placeholder="全部状态" />
+              <SelectValue :placeholder="t('jobs.filterAllStates')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem v-for="s in STATE_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</SelectItem>
+              <SelectItem value="all">{{ t('jobs.filterAllStates') }}</SelectItem>
+              <SelectItem v-for="o in STATE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" @click="resetPaging"><Search class="size-4" /> 应用</Button>
+          <Button size="sm" @click="resetPaging"><Search class="size-4" /> {{ t('common.apply') }}</Button>
         </div>
 
         <Skeleton v-if="query.isPending.value" class="h-56 w-full" />
@@ -159,13 +161,13 @@ const JOB_TYPE_LABEL: Record<string, string> = {
           <Table>
             <TableHeader>
               <TableRow class="bg-muted/50 hover:bg-muted/50">
-                <TableHead class="w-44">任务 ID</TableHead>
-                <TableHead class="w-20">类型</TableHead>
-                <TableHead class="w-28">状态</TableHead>
-                <TableHead class="min-w-[240px]">进度</TableHead>
-                <TableHead class="w-16">目标</TableHead>
-                <TableHead class="min-w-[150px]">创建时间</TableHead>
-                <TableHead class="min-w-[150px]">结束时间</TableHead>
+                <TableHead class="w-44">{{ t('jobs.colId') }}</TableHead>
+                <TableHead class="w-20">{{ t('jobs.colType') }}</TableHead>
+                <TableHead class="w-28">{{ t('jobs.colState') }}</TableHead>
+                <TableHead class="min-w-[240px]">{{ t('jobs.colProgress') }}</TableHead>
+                <TableHead class="w-16">{{ t('jobs.colTarget') }}</TableHead>
+                <TableHead class="min-w-[150px]">{{ t('jobs.colCreatedAt') }}</TableHead>
+                <TableHead class="min-w-[150px]">{{ t('jobs.colFinishedAt') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -180,7 +182,7 @@ const JOB_TYPE_LABEL: Record<string, string> = {
               </TableRow>
             </TableBody>
           </Table>
-          <EmptyState v-if="rows.length === 0" description="还没有任务记录" />
+          <EmptyState v-if="rows.length === 0" :description="t('jobs.empty')" />
         </div>
 
         <Pager

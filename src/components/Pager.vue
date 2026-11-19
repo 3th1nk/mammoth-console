@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
+
+const { t } = useI18n()
 
 /**
  * 游标分页统一组件(替代三处手写 .pager):只有「下一页」(next_cursor),
@@ -7,20 +10,20 @@ import { Button } from '@/components/ui/button'
  */
 withDefaults(
   defineProps<{ hasPrev?: boolean; hasNext?: boolean; hint?: string }>(),
-  { hasPrev: false, hasNext: false, hint: '游标分页 · 仅支持前后翻页' },
+  { hasPrev: false, hasNext: false, hint: '' },
 )
 defineEmits<{ prev: []; next: [] }>()
 </script>
 
 <template>
   <div class="flex items-center justify-between pt-3">
-    <span class="text-[13px] text-muted-foreground">{{ hint }}</span>
+    <span class="text-[13px] text-muted-foreground">{{ hint || t('common.pagerHint') }}</span>
     <div class="flex gap-2">
       <Button variant="outline" size="sm" :disabled="!hasPrev" @click="$emit('prev')">
-        上一页
+        {{ t('common.prevPage') }}
       </Button>
       <Button variant="outline" size="sm" :disabled="!hasNext" @click="$emit('next')">
-        下一页
+        {{ t('common.nextPage') }}
       </Button>
     </div>
   </div>

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/vue-query'
+import { useI18n } from 'vue-i18n'
 import { Search } from 'lucide-vue-next'
 import { getClient } from '@/api/client'
 import { unwrap } from '@/api/problem'
@@ -42,9 +43,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import LangToggle from '@/components/LangToggle.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 
+const { t } = useI18n()
 const conn = useConnectionStore()
 const router = useRouter()
 const qc = useQueryClient()
@@ -154,15 +157,11 @@ watch(
 )
 
 async function copyPassword() {
+  const { toast } = await import('vue-sonner')
   if (!pwInfo.value?.password) return
   const ok = await copyToClipboard(pwInfo.value.password)
-  if (ok) {
-    const { toast } = await import('vue-sonner')
-    toast.success('已复制到剪贴板')
-  } else {
-    const { toast } = await import('vue-sonner')
-    toast.warning('复制失败，请手动选中复制')
-  }
+  if (ok) toast.success(t('common.copied'))
+  else toast.warning(t('common.copyFailed'))
 }
 </script>
 
@@ -182,9 +181,10 @@ async function copyPassword() {
             @click="palette?.open()"
           >
             <Search class="size-4" />
-            <span>搜索</span>
+            <span>{{ t('common.search') }}</span>
             <kbd class="ml-auto rounded border bg-background px-1.5 text-[10px] font-medium">⌘K</kbd>
           </button>
+          <LangToggle />
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
@@ -197,9 +197,9 @@ async function copyPassword() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" class="w-56">
-              <DropdownMenuLabel>管理员（引擎单 token 模式）</DropdownMenuLabel>
+              <DropdownMenuLabel>{{ t('common.operator') }}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem @click="disconnect">断开连接</DropdownMenuItem>
+              <DropdownMenuItem @click="disconnect">{{ t('common.disconnect') }}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -210,8 +210,8 @@ async function copyPassword() {
         variant="destructive"
         class="mx-4 mt-3 border-x-0 border-t-0 rounded-none"
       >
-        <AlertTitle>引擎返回 401</AlertTitle>
-        <AlertDescription>Token 已失效，请在「设置 · 连接」更新</AlertDescription>
+        <AlertTitle>{{ t('common.unauthorizedTitle') }}</AlertTitle>
+        <AlertDescription>{{ t('common.unauthorizedDesc') }}</AlertDescription>
       </Alert>
 
       <div class="flex-1 overflow-auto"><RouterView /></div>
@@ -220,19 +220,16 @@ async function copyPassword() {
     <Dialog :open="pwDialog" @update:open="(v: boolean) => (pwDialog = v)">
       <DialogContent class="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>装机 root 密码（一次性）</DialogTitle>
-          <DialogDescription>该密码不会再次显示，请立即保存。</DialogDescription>
+          <DialogTitle>{{ t('common.pwTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('common.pwDesc') }}</DialogDescription>
         </DialogHeader>
-        <Alert class="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
-          <AlertDescription>该密码不会再次显示，请立即保存。</AlertDescription>
-        </Alert>
         <div class="break-all rounded-md bg-muted px-3 py-2.5 font-mono text-sm">
           {{ pwInfo?.password }}
         </div>
-        <p class="text-xs text-muted-foreground">任务 {{ pwInfo?.taskId }}</p>
+        <div class="text-xs text-muted-foreground">{{ t('common.pwTaskId') }} {{ pwInfo?.taskId }}</div>
         <DialogFooter>
-          <Button variant="outline" @click="copyPassword">复制</Button>
-          <Button @click="pwDialog = false">我已保存</Button>
+          <Button variant="outline" @click="copyPassword">{{ t('common.copy') }}</Button>
+          <Button @click="pwDialog = false">{{ t('common.close') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

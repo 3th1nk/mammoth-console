@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { JOB_SUMMARY_SEGMENTS, TONE_COLOR } from '@/utils/stateColors'
 
 /**
@@ -22,6 +23,8 @@ const props = withDefaults(
   { compact: false },
 )
 
+const { t } = useI18n()
+
 const parts = computed(() =>
   JOB_SUMMARY_SEGMENTS.map((s) => ({
     ...s,
@@ -39,15 +42,15 @@ const parts = computed(() =>
         :key="p.key"
         class="border-r border-background last:border-r-0"
         :style="{ width: `${(p.count / Math.max(summary.total, 1)) * 100}%`, background: p.color }"
-        :title="`${p.label} ${p.count}`"
+        :title="`${t(p.labelKey)} ${p.count}`"
       />
     </div>
     <div v-if="!compact" class="mt-1.5 flex flex-wrap gap-3 text-xs text-muted-foreground">
       <span v-for="p in parts" :key="p.key" class="inline-flex items-center gap-1.5">
         <i class="inline-block size-2 rounded-full" :style="{ background: p.color }" />
-        {{ p.label }} {{ p.count }}
+        {{ t(p.labelKey) }} {{ p.count }}
       </span>
-      <span v-if="parts.length === 0">共 {{ summary.total }} 台</span>
+      <span v-if="parts.length === 0">{{ t('states.sumTotal', { n: summary.total }) }}</span>
     </div>
   </div>
 </template>

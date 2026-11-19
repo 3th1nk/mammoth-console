@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ArrowLeft, RefreshCcw, ScrollText } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { subscribeSse } from '@/api/sse'
@@ -40,6 +41,7 @@ import { formatTime } from '@/utils/format'
 type Job = components['schemas']['Job']
 
 const props = defineProps<{ id: string }>()
+const { t } = useI18n()
 const router = useRouter()
 const queryClient = useQueryClient()
 const conn = useConnectionStore()
@@ -86,14 +88,14 @@ watch(
 onUnmounted(() => closeSse?.())
 
 const JOB_TYPE_LABEL: Record<string, string> = {
-  install: '装机',
-  power: '电源',
-  discover: '盘查',
+  install: t('jobs.typeInstall'),
+  power: t('jobs.typePower'),
+  discover: t('jobs.typeDiscover'),
 }
 
-function currentStage(t: components['schemas']['Task']): string {
-  const active = t.stages?.find((s) => s.state === 'running' || s.state === 'pending')
-  return active?.name ?? t.stages?.filter((s) => s.state !== 'skipped').at(-1)?.name ?? '—'
+function currentStage(t2: components['schemas']['Task']): string {
+  const active = t2.stages?.find((s) => s.state === 'running' || s.state === 'pending')
+  return active?.name ?? t2.stages?.filter((s) => s.state !== 'skipped').at(-1)?.name ?? '—'
 }
 
 // ── spec 查看 ───────────────────────────────────────────────────────────────
@@ -111,17 +113,16 @@ function openSpec() {
 const canceling = ref(false)
 async function cancelJob() {
   const ok = await confirm({
-    title: '取消任务',
-    description:
-      '取消会停止调度并执行补偿（弹出介质、恢复引导序）。已运行的子任务会被中断。确定取消？',
-    confirmText: '取消任务',
+    title: t('jobs.cancelConfirmTitle'),
+    description: t('jobs.cancelConfirmDesc'),
+    confirmText: t('jobs.cancelConfirmText'),
     destructive: true,
   })
   if (!ok) return
   canceling.value = true
   try {
     await unwrap(await getClient().POST('/api/v1/jobs/{id}/cancel', { params: { path: { id: props.id } } }))
-    toast.success('已提交取消')
+    toast.success(t('jobs.cancelSubmitted'))
     // 取消会连带改任务状态：scope 失效覆盖 summary/任务列表/子任务详情
     void queryClient.invalidateQueries({ queryKey: jobScopeKey(props.id) })
   } catch (e) {
@@ -131,8 +132,8 @@ async function cancelJob() {
   }
 }
 
-function openTask(t: components['schemas']['Task']) {
-  router.push({ name: 'task-detail', params: { jobId: props.id, taskId: t.id } })
+function openTask(t2: components['schemas']['Task']) {
+  router.push({ name: 'task-detail', params: { jobId: props.id, taskId: t2.id } })
 }
 </script>
 
@@ -142,15 +143,15 @@ function openTask(t: components['schemas']['Task']) {
       <div class="flex min-w-0 items-center gap-3">
         <Button variant="ghost" size="icon" class="size-8 shrink-0" @click="router.push({ name: 'jobs' })">
           <ArrowLeft class="size-4" />
-          <span class="sr-only">返回任务列表</span>
+          <span class="sr-only">{{ t('machines.backToList') }}</span>
         </Button>
         <h2 class="truncate font-mono text-xl font-bold tracking-tight">{{ id }}</h2>
         <StateBadge v-if="job" kind="job" :state="job.state" />
-        <span v-if="job" class="text-sm text-muted-foreground">{{ JOB_TYPE_LABEL[job.type] ?? job.type }}任务</span>
+        <span v-if="job" class="text-sm text-muted-foreground">{{ t('jobs.installJob', { type: JOB_TYPE_LABEL[job.type] ?? job.type }) }}</span>
       </div>
       <div class="flex items-center gap-2">
         <Button v-if="job?.spec" variant="outline" size="sm" @click="openSpec">
-          <ScrollText class="size-4" /> 查看 spec
+          <ScrollText class="size-4" /> {{ t('jobs.viewSpec') }}
         </Button>
         <Button
           v-if="job && (job.state === 'pending' || job.state === 'running')"
@@ -160,10 +161,10 @@ function openTask(t: components['schemas']['Task']) {
           :disabled="canceling"
           @click="cancelJob"
         >
-          取消任务
+          {{ t('jobs.cancelJob') }}
         </Button>
         <Button variant="outline" size="sm" @click="queryClient.invalidateQueries({ queryKey: jobScopeKey(id) })">
-          <RefreshCcw class="size-4" /> 刷新
+          <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
         </Button>
       </div>
     </div>
@@ -178,11 +179,11 @@ function openTask(t: components['schemas']['Task']) {
         <CardContent class="flex flex-col gap-3">
           <JobSummaryBar :summary="job.summary" />
           <DescriptionList :columns="4" class="border-0 p-0">
-            <DescriptionItem label="目标机器">{{ job.machine_ids?.length ?? job.summary.total }}</DescriptionItem>
-            <DescriptionItem label="创建时间">{{ formatTime(job.created_at) }}</DescriptionItem>
-            <DescriptionItem label="结束时间">{{ formatTime(job.finished_at) }}</DescriptionItem>
-            <DescriptionItem label="并发 / 失败策略">
-              {{ job.policy?.concurrency ?? '—' }} / {{ job.policy?.on_task_failure === 'abort_batch' ? '中止整批' : '继续其余' }}
+            <DescriptionItem :label="t('dashboard.colTarget')">{{ job.machine_ids?.length ?? job.summary.total }}</DescriptionItem>
+            <DescriptionItem :label="t('jobs.colCreatedAt')">{{ formatTime(job.created_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('jobs.colFinishedAt')">{{ formatTime(job.finished_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('jobs.concurrency')">
+              {{ job.policy?.concurrency ?? '—' }} / {{ job.policy?.on_task_failure === 'abort_batch' ? t('jobs.policyAbort') : t('jobs.policyContinue') }}
             </DescriptionItem>
           </DescriptionList>
         </CardContent>
@@ -194,18 +195,19 @@ function openTask(t: components['schemas']['Task']) {
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="min-w-[150px]">机器</TableHead>
-                  <TableHead class="w-28">状态</TableHead>
-                  <TableHead class="w-24">执行轮次</TableHead>
-                  <TableHead class="min-w-[140px]">当前阶段</TableHead>
-                  <TableHead class="min-w-[160px]">错误</TableHead>
+                  <TableHead class="min-w-[150px]">{{ t('jobs.colMachine') }}</TableHead>
+                  <TableHead class="w-28">{{ t('jobs.colState') }}</TableHead>
+                  <TableHead class="w-24">{{ t('jobs.colAttempt') }}</TableHead>
+                  <TableHead class="min-w-[140px]">{{ t('jobs.colStage') }}</TableHead>
+                  <TableHead class="min-w-[160px]">{{ t('jobs.colError') }}</TableHead>
                 </TableRow>
+
               </TableHeader>
               <TableBody>
                 <TableRow v-for="row in tasks" :key="row.id" class="cursor-pointer" @click="openTask(row)">
                   <TableCell><span class="font-mono text-xs">{{ row.machine_id }}</span></TableCell>
                   <TableCell><StateBadge kind="task" :state="row.state" /></TableCell>
-                  <TableCell class="text-muted-foreground">第 {{ row.attempt }} 次</TableCell>
+                  <TableCell class="text-muted-foreground">{{ t('jobs.attemptN', { n: row.attempt }) }}</TableCell>
                   <TableCell><span class="font-mono text-xs">{{ currentStage(row) }}</span></TableCell>
                   <TableCell>
                     <span v-if="row.error" class="font-mono text-xs text-destructive">{{ row.error.code }}</span>
@@ -214,7 +216,7 @@ function openTask(t: components['schemas']['Task']) {
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="tasks.length === 0" description="该任务还没有子任务记录" />
+            <EmptyState v-if="tasks.length === 0" :description="t('jobs.tasksEmpty')" />
           </div>
         </CardContent>
       </Card>
@@ -223,8 +225,8 @@ function openTask(t: components['schemas']['Task']) {
     <Dialog :open="specVisible" @update:open="(v: boolean) => (specVisible = v)">
       <DialogContent class="sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>解析后的最终 spec（审计）</DialogTitle>
-          <DialogDescription>提交时快照的实际执行规格。</DialogDescription>
+          <DialogTitle>{{ t('jobs.specTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('jobs.specDesc') }}</DialogDescription>
         </DialogHeader>
         <pre class="max-h-[60vh] overflow-auto rounded-lg border bg-muted/50 p-4 font-mono text-xs leading-relaxed">{{ specText }}</pre>
       </DialogContent>

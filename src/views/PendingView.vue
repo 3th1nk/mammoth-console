@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ChevronDown, ChevronRight, RefreshCcw } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { pendingListKey, pendingDomain } from '@/api/queryKeys'
@@ -30,6 +31,7 @@ import { formatTime } from '@/utils/format'
 type PendingMachine = components['schemas']['PendingMachine']
 type Machine = components['schemas']['Machine']
 
+const { t } = useI18n()
 const router = useRouter()
 const qc = useQueryClient()
 const claimTarget = ref<PendingMachine | null>(null)
@@ -59,15 +61,12 @@ function openClaim(m: PendingMachine) {
   dialogVisible.value = true
 }
 
-// 一次性移除：给「机器已手动注册、记录先于注册落库」的遗留行用。已在
-// 各入库路径做 MAC 归属比对的引擎不会为已注册机器重建台账，未注册机器
-// 再次 PXE 上报仍会重新出现（台账记录机房的现在，不是历史）。
+// 一次性移除：给「机器已手动注册、记录先于注册落库」的遗留行用。
 async function dismiss(m: PendingMachine) {
   const ok = await confirm({
-    title: '移除待认领记录',
-    description:
-      '移除这条待认领记录？适用于机器已手动注册、记录遗留的情况。未注册的机器再次 PXE 上报会重新出现。',
-    confirmText: '移除',
+    title: t('pending.dismissConfirmTitle'),
+    description: t('pending.dismissConfirmDesc'),
+    confirmText: t('pending.dismissConfirmText'),
     destructive: true,
   })
   if (!ok) return
@@ -75,7 +74,7 @@ async function dismiss(m: PendingMachine) {
     await unwrap(await getClient().DELETE('/api/v1/pending-machines/{mac}', {
       params: { path: { mac: m.mac } },
     }))
-    toast.success('已移除')
+    toast.success(t('pending.dismissed'))
     void qc.invalidateQueries({ queryKey: pendingDomain })
   } catch (e) {
     toast.error(errorMessage(e))
@@ -91,11 +90,11 @@ function onRegistered(machine: Machine) {
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">待认领</h2>
-        <p class="text-sm text-muted-foreground">零注册机器台账 · 共 {{ rows.length }} 台</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('pending.title') }}</h2>
+        <p class="text-sm text-muted-foreground">{{ t('pending.subtitle', { n: rows.length }) }}</p>
       </div>
       <Button variant="outline" size="sm" @click="query.refetch()">
-        <RefreshCcw class="size-4" /> 刷新
+        <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
       </Button>
     </div>
 
@@ -111,12 +110,12 @@ function onRegistered(machine: Machine) {
             <TableHeader>
               <TableRow class="bg-muted/50 hover:bg-muted/50">
                 <TableHead class="w-10" />
-                <TableHead class="w-44">MAC</TableHead>
-                <TableHead class="min-w-[170px]">固件（option 93）</TableHead>
-                <TableHead class="min-w-[120px]">探针报告</TableHead>
-                <TableHead class="w-44">首次出现</TableHead>
-                <TableHead class="w-44">最近出现</TableHead>
-                <TableHead class="w-40 text-right">操作</TableHead>
+                <TableHead class="w-44">{{ t('pending.colMac') }}</TableHead>
+                <TableHead class="min-w-[170px]">{{ t('pending.colFirmware') }}</TableHead>
+                <TableHead class="min-w-[120px]">{{ t('pending.colReport') }}</TableHead>
+                <TableHead class="w-44">{{ t('pending.colFirstSeen') }}</TableHead>
+                <TableHead class="w-44">{{ t('pending.colLastSeen') }}</TableHead>
+                <TableHead class="w-40 text-right">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,24 +142,24 @@ function onRegistered(machine: Machine) {
                       class="rounded-md font-medium"
                       :style="toneBadgeStyle('success')"
                     >
-                      已上报
+                      {{ t('pending.reported') }}
                     </Badge>
                     <Badge v-else variant="outline" class="rounded-md font-medium" :style="toneBadgeStyle('neutral')">
-                      未上报
+                      {{ t('pending.notReported') }}
                     </Badge>
                   </TableCell>
                   <TableCell class="text-muted-foreground">{{ formatTime(row.first_seen_at) }}</TableCell>
                   <TableCell class="text-muted-foreground">{{ formatTime(row.last_seen_at) }}</TableCell>
                   <TableCell class="text-right">
                     <div class="inline-flex justify-end gap-1">
-                      <Button size="sm" class="h-8" @click.stop="openClaim(row)">认领</Button>
+                      <Button size="sm" class="h-8" @click.stop="openClaim(row)">{{ t('pending.claim') }}</Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         class="h-8 text-destructive hover:text-destructive"
                         @click.stop="dismiss(row)"
                       >
-                        移除
+                        {{ t('pending.dismiss') }}
                       </Button>
                     </div>
                   </TableCell>
@@ -169,24 +168,19 @@ function onRegistered(machine: Machine) {
                   <TableCell :colspan="7" class="bg-muted/30 p-0">
                     <div class="px-10 py-3">
                       <template v-if="row.report">
-                        <p class="mb-1.5 text-xs text-muted-foreground">探针 /sys 扫描报告（原样落库）</p>
+                        <p class="mb-1.5 text-xs text-muted-foreground">{{ t('pending.reportTitle') }}</p>
                         <pre class="max-h-64 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs leading-relaxed">{{ JSON.stringify(row.report, null, 2) }}</pre>
                       </template>
-                      <p v-else class="text-xs leading-relaxed text-muted-foreground">
-                        尚未收到探针报告——机器可能只 PXE 留痕了一次，没有进入内存盘探针。
-                        让它再次引导（或等待租期重试）即可补齐。
-                      </p>
+                      <p v-else class="text-xs leading-relaxed text-muted-foreground">{{ t('pending.noReport') }}</p>
                     </div>
                   </TableCell>
                 </TableRow>
               </template>
             </TableBody>
           </Table>
-          <EmptyState v-if="rows.length === 0" description="登记簿是空的">
+          <EmptyState v-if="rows.length === 0" :description="t('pending.empty')">
             <p class="max-w-[420px] text-xs leading-relaxed text-muted-foreground">
-              开启引擎零注册（MAMMOTH_PXE_ENABLED + MAMMOTH_PXE_ENROLL）后，
-              插电自举的未知机器会在这里留下 MAC、固件与盘查报告——
-              拿着序列号去机房认出它，补上 BMC 凭证即可收编。
+              {{ t('pending.emptyHint') }}
             </p>
           </EmptyState>
         </div>

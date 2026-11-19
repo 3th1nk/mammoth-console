@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ArrowLeft, RefreshCcw, RotateCcw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage, codeText } from '@/api/problem'
 import { subscribeSse } from '@/api/sse'
@@ -25,6 +26,7 @@ import { formatTime } from '@/utils/format'
 type Task = components['schemas']['Task']
 
 const props = defineProps<{ jobId: string; taskId: string }>()
+const { t } = useI18n()
 const router = useRouter()
 const queryClient = useQueryClient()
 const conn = useConnectionStore()
@@ -106,18 +108,19 @@ const steps = computed<StepView[]>(() => {
   if (stages.length === 0) return []
   if (stages.length <= 2) {
     return stages.map((s) => ({
-      name: s.name,
+      // 阶段名经 stages 域翻译(引擎契约值缺失时回落原文)
+      name: t(`stages.${s.name}`),
       status: stepStatus(s.state),
-      description: s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : '未执行',
+      description: s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : t('common.notRun'),
     }))
   }
   const byName = new Map(stages.map((s) => [s.name, s]))
   return STEPS.map((name) => {
     const s = byName.get(name)
     return {
-      name,
+      name: t(`stages.${name}`),
       status: s ? stepStatus(s.state) : ('wait' as const),
-      description: s ? (s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : '') : '未执行',
+      description: s ? (s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : '') : t('common.notRun'),
     }
   })
 })
@@ -126,9 +129,9 @@ const steps = computed<StepView[]>(() => {
 const retrying = ref(false)
 async function retry() {
   const ok = await confirm({
-    title: `重试 ${props.taskId}`,
-    description: '从最后一个阶段断点续跑（不重头开始）。确定重试？',
-    confirmText: '重试',
+    title: t('taskDetail.retryConfirmTitle', { id: props.taskId }),
+    description: t('taskDetail.retryConfirmDesc'),
+    confirmText: t('taskDetail.retryConfirmText'),
   })
   if (!ok) return
   retrying.value = true
@@ -138,7 +141,7 @@ async function retry() {
         params: { path: { id: props.jobId, taskId: props.taskId } },
       }),
     )
-    toast.success('已重新入队，从断点续跑')
+    toast.success(t('taskDetail.retryQueued'))
     void queryClient.invalidateQueries({ queryKey: taskKey(props.jobId, props.taskId) })
   } catch (e) {
     toast.error(errorMessage(e))
@@ -173,10 +176,10 @@ async function retry() {
           :disabled="retrying"
           @click="retry"
         >
-          <RotateCcw class="size-4" /> 断点重试
+          <RotateCcw class="size-4" /> {{ t('taskDetail.retry') }}
         </Button>
         <Button variant="outline" size="sm" @click="query.refetch()">
-          <RefreshCcw class="size-4" /> 刷新
+          <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
         </Button>
       </div>
     </div>
@@ -195,22 +198,24 @@ async function retry() {
 
       <Card>
         <CardHeader>
-          <CardTitle class="text-base">子任务信息</CardTitle>
+          <CardTitle class="text-base">{{ t('taskDetail.subInfo') }}</CardTitle>
         </CardHeader>
         <CardContent>
           <DescriptionList :columns="4">
-            <DescriptionItem label="机器" mono>{{ task.machine_id }}</DescriptionItem>
-            <DescriptionItem label="流程">{{ task.flow_name }}</DescriptionItem>
-            <DescriptionItem label="执行轮次">第 {{ task.attempt }} 次{{ task.attempt > 1 ? '（重试续跑）' : '' }}</DescriptionItem>
-            <DescriptionItem label="应答文件地址">
-              <a v-if="task.answer_url" :href="task.answer_url" target="_blank" class="font-mono text-xs underline underline-offset-2">
-                查看
-              </a>
-              <span v-else class="text-muted-foreground text-xs">—（虚拟介质装机无此地址）</span>
+            <DescriptionItem :label="t('taskDetail.colMachine')" mono>{{ task.machine_id }}</DescriptionItem>
+            <DescriptionItem :label="t('taskDetail.colFlow')">{{ task.flow_name }}</DescriptionItem>
+            <DescriptionItem :label="t('taskDetail.colAttempt')">
+              {{ task.attempt > 1 ? t('taskDetail.attemptRetry', { n: task.attempt }) : t('jobs.attemptN', { n: task.attempt }) }}
             </DescriptionItem>
-            <DescriptionItem label="创建时间">{{ formatTime(task.created_at) }}</DescriptionItem>
-            <DescriptionItem label="更新时间">{{ formatTime(task.updated_at) }}</DescriptionItem>
-            <DescriptionItem label="结束时间">{{ formatTime(task.finished_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('taskDetail.colAnswerUrl')">
+              <a v-if="task.answer_url" :href="task.answer_url" target="_blank" class="font-mono text-xs underline underline-offset-2">
+                {{ t('taskDetail.view') }}
+              </a>
+              <span v-else class="text-muted-foreground text-xs">{{ t('taskDetail.noAnswerUrl') }}</span>
+            </DescriptionItem>
+            <DescriptionItem :label="t('taskDetail.colCreatedAt')">{{ formatTime(task.created_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('taskDetail.colUpdatedAt')">{{ formatTime(task.updated_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('taskDetail.colFinishedAt')">{{ formatTime(task.finished_at) }}</DescriptionItem>
           </DescriptionList>
         </CardContent>
       </Card>
@@ -226,8 +231,8 @@ async function retry() {
 
       <Card>
         <CardHeader>
-          <CardTitle class="text-base">执行日志</CardTitle>
-          <p class="text-xs text-muted-foreground">安装器输出经 syslog 归因落库</p>
+          <CardTitle class="text-base">{{ t('taskDetail.logTitle') }}</CardTitle>
+          <p class="text-xs text-muted-foreground">{{ t('taskDetail.logDesc') }}</p>
         </CardHeader>
         <CardContent>
           <LogViewer :job-id="jobId" :task-id="taskId" @ended="onLogEnded" />

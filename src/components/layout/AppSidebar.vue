@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Bell, Cpu, FileText, KeyRound, LayoutDashboard, List, Package, Server, Settings } from 'lucide-vue-next'
 import {
   Sidebar,
@@ -23,35 +24,36 @@ import { formatVersion } from '@/utils/format'
 const props = defineProps<{ pendingCount: number }>()
 const conn = useConnectionStore()
 const route = useRoute()
+const { t } = useI18n()
 
 interface NavItem {
   name: string
-  title: string
+  titleKey: string
   icon: Component
 }
 
-const GROUPS: { label: string; items: NavItem[] }[] = [
+const GROUPS: { labelKey: string; items: NavItem[] }[] = [
   {
-    label: '平台',
+    labelKey: 'nav.platform',
     items: [
-      { name: 'dashboard', title: '总览', icon: LayoutDashboard },
-      { name: 'machines', title: '机器', icon: Server },
-      { name: 'pending', title: '待认领', icon: Bell },
-      { name: 'jobs', title: '任务', icon: List },
-      { name: 'events', title: '事件', icon: FileText },
+      { name: 'dashboard', titleKey: 'nav.dashboard', icon: LayoutDashboard },
+      { name: 'machines', titleKey: 'nav.machines', icon: Server },
+      { name: 'pending', titleKey: 'nav.pending', icon: Bell },
+      { name: 'jobs', titleKey: 'nav.jobs', icon: List },
+      { name: 'events', titleKey: 'nav.events', icon: FileText },
     ],
   },
   {
-    label: '资源',
+    labelKey: 'nav.resources',
     items: [
-      { name: 'images', title: '镜像库', icon: Package },
-      { name: 'credentials', title: '凭证', icon: KeyRound },
-      { name: 'bios-profiles', title: 'BIOS 基线', icon: Cpu },
+      { name: 'images', titleKey: 'nav.images', icon: Package },
+      { name: 'credentials', titleKey: 'nav.credentials', icon: KeyRound },
+      { name: 'bios-profiles', titleKey: 'nav.biosProfiles', icon: Cpu },
     ],
   },
   {
-    label: '系统',
-    items: [{ name: 'settings', title: '设置', icon: Settings }],
+    labelKey: 'nav.system',
+    items: [{ name: 'settings', titleKey: 'nav.settings', icon: Settings }],
   },
 ]
 </script>
@@ -63,21 +65,21 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
         <img src="/mammoth.svg" alt="mammoth" class="size-7 shrink-0" />
         <div class="min-w-0">
           <div class="truncate text-sm font-semibold leading-tight">Mammoth Console</div>
-          <div class="truncate text-xs text-muted-foreground">裸金属装机控制台</div>
+          <div class="truncate text-xs text-muted-foreground">{{ t('nav.brandSub') }}</div>
         </div>
       </div>
     </SidebarHeader>
 
     <SidebarContent>
-      <SidebarGroup v-for="g in GROUPS" :key="g.label">
-        <SidebarGroupLabel>{{ g.label }}</SidebarGroupLabel>
+      <SidebarGroup v-for="g in GROUPS" :key="g.labelKey">
+        <SidebarGroupLabel>{{ t(g.labelKey) }}</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem v-for="item in g.items" :key="item.name">
-              <SidebarMenuButton as-child :is-active="route.name === item.name" :tooltip="item.title">
+              <SidebarMenuButton as-child :is-active="route.name === item.name" :tooltip="t(item.titleKey)">
                 <RouterLink :to="{ name: item.name }">
                   <component :is="item.icon" />
-                  <span>{{ item.title }}</span>
+                  <span>{{ t(item.titleKey) }}</span>
                 </RouterLink>
               </SidebarMenuButton>
               <SidebarMenuBadge
@@ -99,10 +101,10 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
           variant="outline"
           class="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
         >
-          引擎 {{ formatVersion(conn.capabilities.version) }}
+          {{ t('nav.engine', { version: formatVersion(conn.capabilities.version) }) }}
         </Badge>
         <Badge v-else variant="outline" class="border-destructive/40 bg-destructive/10 text-destructive">
-          未连接
+          {{ t('nav.engineDown') }}
         </Badge>
       </div>
     </SidebarFooter>
