@@ -1,18 +1,37 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Plus, RefreshCcw, Search, Tag, X, Zap } from 'lucide-vue-next'
 import { useQuery } from '@tanstack/vue-query'
-import { ElMessage } from 'element-plus'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { toast } from 'vue-sonner'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { machineListKey } from '@/api/queryKeys'
+import { actionCommandRecent } from '@/utils/actionNavGuard'
 import type { components } from '@/api/types.gen'
 import StateBadge from '@/components/StateBadge.vue'
 import PowerBadge from '@/components/PowerBadge.vue'
 import MachineActions from '@/components/MachineActions.vue'
-import { actionCommandRecent } from '@/utils/actionNavGuard'
 import RegisterMachineDialog from '@/components/RegisterMachineDialog.vue'
+import { Alert, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import EmptyState from '@/components/EmptyState.vue'
+import Pager from '@/components/Pager.vue'
 import { formatBytes, formatTime } from '@/utils/format'
 
 type Machine = components['schemas']['Machine']
@@ -28,7 +47,7 @@ const labelChips = ref<string[]>([])
 const labelInput = ref('')
 const registerVisible = ref(false)
 
-/** 游标分页：只有“下一页”（next_cursor），用栈记住来路实现“上一页”。 */
+/** 游标分页：只有「下一页」（next_cursor），用栈记住来路实现「上一页」。 */
 const cursor = ref<string | undefined>(undefined)
 const cursorStack = ref<(string | undefined)[]>([])
 
@@ -53,6 +72,15 @@ const query = useQuery({
 const rows = computed(() => query.data.value?.items ?? [])
 const nextCursor = computed(() => query.data.value?.next_cursor ?? null)
 
+const stateModel = computed({
+  get: () => stateFilter.value || 'all',
+  set: (v: string) => {
+    stateFilter.value = (v === 'all' ? '' : v) as MachineState | ''
+    cursor.value = undefined
+    cursorStack.value = []
+  },
+})
+
 function applySearch() {
   q.value = qInput.value.trim()
   cursor.value = undefined
@@ -63,7 +91,7 @@ function addLabel() {
   const v = labelInput.value.trim()
   if (!v) return
   if (!/^[^=]+=[^=]*$/.test(v)) {
-    ElMessage.warning('标签过滤格式为 k=v，例如 env=prod')
+    toast.warning('标签过滤格式为 k=v，例如 env=prod')
     return
   }
   if (!labelChips.value.includes(v)) labelChips.value = [...labelChips.value, v]
@@ -90,14 +118,34 @@ function prevPage() {
   cursor.value = prev
 }
 
-function openDetail(m: Machine, _col: unknown, event: Event) {
-  if ((event.target as HTMLElement)?.closest('.sel-col')) return
+function openDetail(m: Machine, event: Event) {
+  if ((event.target as HTMLElement)?.closest('[data-sel-col]')) return
   // 行内「更多」菜单刚交互过：菜单关闭瞬间的落穿点击会到这里，误跳详情。
   if (actionCommandRecent()) return
   router.push({ name: 'machine-detail', params: { id: m.id } })
 }
 
+// ── 多选（手写 selection 列） ───────────────────────────────────────────────
 const selected = ref<Machine[]>([])
+const selectedIds = computed(() => new Set(selected.value.map((m) => m.id)))
+const allSelected = computed(
+  () => rows.value.length > 0 && rows.value.every((r) => selectedIds.value.has(r.id)),
+)
+
+function toggleRow(m: Machine) {
+  const next = new Set(selectedIds.value)
+  if (next.has(m.id)) next.delete(m.id)
+  else next.add(m.id)
+  selected.value = rows.value.filter((r) => next.has(r.id))
+}
+
+function toggleAll() {
+  selected.value = allSelected.value ? [] : [...rows.value]
+}
+
+function clearSelection() {
+  selected.value = []
+}
 
 function startInstall() {
   const ids = selected.value.map((m) => m.id).join(',')
@@ -129,7 +177,7 @@ function addBatchChip() {
   const v = batchInput.value.trim()
   if (!v) return
   if (!/^[^=]+=[^=]*$/.test(v)) {
-    ElMessage.warning('标签格式为 k=v')
+    toast.warning('标签格式为 k=v')
     return
   }
   if (!batchChips.value.includes(v)) batchChips.value = [...batchChips.value, v]
@@ -145,11 +193,11 @@ async function applyBatchLabels() {
   )
   const clash = batchRemoveKeys.value.filter((k) => k in newLabels)
   if (clash.length > 0) {
-    ElMessage.warning(`标签 ${clash.join('、')} 同时在添加与删除里，请二选一`)
+    toast.warning(`标签 ${clash.join('、')} 同时在添加与删除里，请二选一`)
     return
   }
   if (Object.keys(newLabels).length === 0 && batchRemoveKeys.value.length === 0) {
-    ElMessage.warning('请先添加或勾选要删除的标签')
+    toast.warning('请先添加或勾选要删除的标签')
     return
   }
   batchApplying.value = true
@@ -163,12 +211,12 @@ async function applyBatchLabels() {
         },
       }),
     )
-    ElMessage.success(`已为 ${selected.value.length} 台机器更新标签`)
+    toast.success(`已为 ${selected.value.length} 台机器更新标签`)
     batchLabelVisible.value = false
     void query.refetch()
   } catch (e) {
     // 引擎全有或全无：失败即整体未生效，直接报错
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     batchApplying.value = false
   }
@@ -185,233 +233,239 @@ function onActionSubmitted() {
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">机器</h1>
+  <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <el-button type="primary" :disabled="selected.length === 0" @click="startInstall">
-          装机{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
-        </el-button>
-        <el-button :disabled="selected.length === 0" @click="openBatchLabels">
-          打标签{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
-        </el-button>
-        <el-button @click="registerVisible = true">注册机器</el-button>
-        <el-button :icon="Refresh" @click="query.refetch()">刷新</el-button>
+        <h2 class="text-2xl font-bold tracking-tight">机器</h2>
+        <p class="text-sm text-muted-foreground">
+          台账与状态
+          <template v-if="selected.length > 0">· 已选 {{ selected.length }} 台</template>
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button size="sm" :disabled="selected.length === 0" @click="startInstall">
+          <Zap class="size-4" /> 装机{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
+        </Button>
+        <Button variant="outline" size="sm" :disabled="selected.length === 0" @click="openBatchLabels">
+          <Tag class="size-4" /> 打标签{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
+        </Button>
+        <Button variant="outline" size="sm" @click="registerVisible = true">
+          <Plus class="size-4" /> 注册机器
+        </Button>
+        <Button variant="outline" size="sm" @click="query.refetch()">
+          <RefreshCcw class="size-4" /> 刷新
+        </Button>
       </div>
     </div>
 
-    <el-card shadow="never" class="toolbar">
-      <div class="filters">
-        <el-select
-          v-model="stateFilter"
-          placeholder="全部状态"
-          clearable
-          style="width: 130px"
-          @change="cursor = undefined; cursorStack = []"
-        >
-          <el-option label="注册中" value="registering" />
-          <el-option label="盘查中" value="discovering" />
-          <el-option label="就绪" value="ready" />
-          <el-option label="异常" value="error" />
-        </el-select>
-        <el-input
-          v-model="qInput"
-          placeholder="序列号 / BMC 地址 / 厂商 / 型号 / 标签 / ID"
-          clearable
-          style="width: 320px"
-          @keyup.enter="applySearch"
-          @clear="applySearch"
-        />
-        <el-input
-          v-model="labelInput"
-          placeholder="标签过滤 k=v，回车添加"
-          style="width: 220px"
-          @keyup.enter="addLabel"
-        />
-        <el-button type="primary" :icon="Search" @click="applySearch">搜索</el-button>
-      </div>
-      <div v-if="labelChips.length > 0" class="chips">
-        <el-tag
-          v-for="chip in labelChips"
-          :key="chip"
-          closable
-          size="small"
-          @close="removeLabel(chip)"
-        >
-          {{ chip }}
-        </el-tag>
-      </div>
-    </el-card>
+    <Alert v-if="query.error.value" variant="destructive">
+      <AlertTitle>{{ errorMessage(query.error.value) }}</AlertTitle>
+    </Alert>
 
-    <el-card shadow="never">
-      <el-table
-        v-loading="query.isFetching.value"
-        :data="rows"
-        size="default"
-        :row-style="{ cursor: 'pointer' }"
-        @row-click="openDetail"
-        @selection-change="(rows: Machine[]) => (selected = rows)"
-      >
-        <el-table-column type="selection" width="42" class-name="sel-col" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }"><StateBadge kind="machine" :state="row.state" /></template>
-        </el-table-column>
-        <el-table-column label="ID" width="150">
-          <template #default="{ row }"><span class="mono">{{ row.id }}</span></template>
-        </el-table-column>
-        <el-table-column label="BMC 地址" min-width="130">
-          <template #default="{ row }"><span class="mono">{{ row.bmc.address }}</span></template>
-        </el-table-column>
-        <el-table-column prop="bmc.protocol" label="协议" width="80" />
-        <el-table-column label="厂商 / 型号" min-width="130">
-          <template #default="{ row }">
-            <span v-if="row.bmc.vendor || row.bmc.model">
-              {{ row.bmc.vendor || '—' }} · {{ row.bmc.model || '—' }}
-            </span>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="序列号" min-width="120">
-          <template #default="{ row }">
-            <span class="mono">{{ row.hardware?.serial_number || '—' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="CPU / 内存" min-width="130">
-          <template #default="{ row }">
-            <template v-if="row.hardware?.cpu?.cores">
-              {{ row.hardware.cpu.cores }}C · {{ formatBytes(row.hardware.memory_bytes) }}
-              <div v-if="row.hardware.cpu.model" class="text-muted cpu-model">{{ row.hardware.cpu.model }}</div>
-            </template>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="电源" width="90">
-          <template #default="{ row }"><PowerBadge :state="row.power_state" /></template>
-        </el-table-column>
-        <el-table-column label="标签" min-width="110">
-          <template #default="{ row }">
-            <el-tag
-              v-for="(v, k) in row.labels"
-              :key="k"
-              size="small"
-              effect="plain"
-              class="label-tag"
-            >
-              {{ k }}={{ v }}
-            </el-tag>
-            <span v-if="Object.keys(row.labels).length === 0" class="text-muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="注册时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <MachineActions
-              :machine-id="row.id"
-              :power-state="row.power_state"
-              :bmc="row.bmc"
-              flat
-              @submitted="onActionSubmitted"
-            />
-          </template>
-        </el-table-column>
-        <template #empty>
-          <el-empty
-            description="还没有机器"
-            :image-size="80"
-          >
-            <div class="text-muted" style="font-size: 13px">
-              通过 API 注册（POST /api/v1/machines），或开启引擎零注册等机器自己出现。
-            </div>
-          </el-empty>
-        </template>
-      </el-table>
-
-      <div class="pager">
-        <span class="text-muted" style="font-size: 13px">游标分页：仅支持前后翻页</span>
-        <div>
-          <el-button size="small" :disabled="cursorStack.length === 0" @click="prevPage">上一页</el-button>
-          <el-button size="small" :disabled="!nextCursor" @click="nextPage">下一页</el-button>
+    <Card>
+      <CardContent class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <Select v-model="stateModel">
+            <SelectTrigger class="w-[130px]">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="registering">注册中</SelectItem>
+              <SelectItem value="discovering">盘查中</SelectItem>
+              <SelectItem value="ready">就绪</SelectItem>
+              <SelectItem value="error">异常</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            v-model="qInput"
+            placeholder="序列号 / BMC 地址 / 厂商 / 型号 / 标签 / ID"
+            class="w-[320px]"
+            @keyup.enter="applySearch"
+          />
+          <Input
+            v-model="labelInput"
+            placeholder="标签过滤 k=v，回车添加"
+            class="w-[220px]"
+            @keyup.enter="addLabel"
+          />
+          <Button size="sm" @click="applySearch"><Search class="size-4" /> 搜索</Button>
         </div>
-      </div>
-      <el-alert
-        v-if="query.error.value"
-        :title="errorMessage(query.error.value)"
-        type="error"
-        :closable="false"
-        show-icon
-        class="mt"
-      />
-    </el-card>
+        <div v-if="labelChips.length > 0" class="flex flex-wrap gap-1.5">
+          <span
+            v-for="chip in labelChips"
+            :key="chip"
+            class="inline-flex items-center gap-1 rounded-md border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+          >
+            {{ chip }}
+            <button class="transition-opacity hover:opacity-70" @click="removeLabel(chip)">
+              <X class="size-3" />
+            </button>
+          </span>
+        </div>
+
+        <Skeleton v-if="query.isPending.value" class="h-56 w-full" />
+        <div v-else class="overflow-x-auto overflow-y-hidden rounded-lg border">
+          <Table class="min-w-[1080px]">
+            <TableHeader>
+              <TableRow class="bg-muted/50 hover:bg-muted/50">
+                <TableHead data-sel-col class="w-10" @click.stop>
+                  <Checkbox
+                    :model-value="allSelected"
+                    aria-label="全选"
+                    @update:model-value="toggleAll"
+                  />
+                </TableHead>
+                <TableHead class="w-24">状态</TableHead>
+                <TableHead class="w-36">ID</TableHead>
+                <TableHead class="min-w-[130px]">BMC 地址</TableHead>
+                <TableHead class="w-20">协议</TableHead>
+                <TableHead class="min-w-[130px]">厂商 / 型号</TableHead>
+                <TableHead class="min-w-[110px]">序列号</TableHead>
+                <TableHead class="min-w-[130px]">CPU / 内存</TableHead>
+                <TableHead class="w-24">电源</TableHead>
+                <TableHead class="min-w-[110px]">标签</TableHead>
+                <TableHead class="w-40">注册时间</TableHead>
+                <TableHead class="w-32 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="row in rows" :key="row.id" class="cursor-pointer" @click="openDetail(row, $event)">
+                <TableCell data-sel-col class="pr-0" @click.stop>
+                  <Checkbox
+                    :model-value="selectedIds.has(row.id)"
+                    :aria-label="`选择 ${row.id}`"
+                    @update:model-value="() => toggleRow(row)"
+                  />
+                </TableCell>
+                <TableCell><StateBadge kind="machine" :state="row.state" /></TableCell>
+                <TableCell><span class="font-mono text-xs">{{ row.id }}</span></TableCell>
+                <TableCell><span class="font-mono text-xs">{{ row.bmc.address }}</span></TableCell>
+                <TableCell class="text-muted-foreground">{{ row.bmc.protocol }}</TableCell>
+                <TableCell>
+                  <span v-if="row.bmc.vendor || row.bmc.model">
+                    {{ row.bmc.vendor || '—' }} · {{ row.bmc.model || '—' }}
+                  </span>
+                  <span v-else class="text-muted-foreground">—</span>
+                </TableCell>
+                <TableCell>
+                  <span class="font-mono text-xs">{{ row.hardware?.serial_number || '—' }}</span>
+                </TableCell>
+                <TableCell>
+                  <template v-if="row.hardware?.cpu?.cores">
+                    {{ row.hardware.cpu.cores }}C · {{ formatBytes(row.hardware.memory_bytes) }}
+                    <div class="max-w-[240px] truncate text-xs text-muted-foreground" :title="row.hardware.cpu.model">
+                      {{ row.hardware.cpu.model }}
+                    </div>
+                  </template>
+                  <span v-else class="text-muted-foreground">—</span>
+                </TableCell>
+                <TableCell><PowerBadge :state="row.power_state" /></TableCell>
+                <TableCell>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="(v, k) in row.labels"
+                      :key="k"
+                      class="inline-flex rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-secondary-foreground"
+                    >
+                      {{ k }}={{ v }}
+                    </span>
+                    <span v-if="Object.keys(row.labels).length === 0" class="text-muted-foreground">—</span>
+                  </div>
+                </TableCell>
+                <TableCell class="text-muted-foreground">{{ formatTime(row.created_at) }}</TableCell>
+                <TableCell class="text-right">
+                  <div class="inline-flex justify-end" @click.stop>
+                    <MachineActions
+                      :machine-id="row.id"
+                      :power-state="row.power_state"
+                      :bmc="row.bmc"
+                      flat
+                      @submitted="onActionSubmitted"
+                    />
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          <EmptyState v-if="rows.length === 0" description="还没有机器">
+            <p class="text-xs text-muted-foreground">
+              通过 API 注册（POST /api/v1/machines），或开启引擎零注册等机器自己出现。
+            </p>
+          </EmptyState>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <button
+            v-if="selected.length > 0"
+            class="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            @click="clearSelection"
+          >
+            清除选择（{{ selected.length }}）
+          </button>
+          <span v-else />
+          <Pager
+            :has-prev="cursorStack.length > 0"
+            :has-next="!!nextCursor"
+            @prev="prevPage"
+            @next="nextPage"
+          />
+        </div>
+      </CardContent>
+    </Card>
 
     <RegisterMachineDialog v-model="registerVisible" @registered="onRegistered" />
 
-    <el-dialog v-model="batchLabelVisible" :title="`批量打标签（${selected.length} 台）`" width="480px">
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="添加标签（k=v，回车添加；已存在的同 key 会被覆盖）">
-          <el-input v-model="batchInput" placeholder="env=prod" @keyup.enter="addBatchChip" />
-          <el-tag
-            v-for="chip in batchChips"
-            :key="chip"
-            closable
-            size="small"
-            style="margin: 6px 6px 0 0"
-            @close="batchChips = batchChips.filter((c) => c !== chip)"
-          >
-            {{ chip }}
-          </el-tag>
-        </el-form-item>
-        <el-form-item v-if="removableKeys.length > 0" label="删除标签（所选机器现有标签的并集）">
-          <el-checkbox-group v-model="batchRemoveKeys">
-            <el-checkbox v-for="k in removableKeys" :key="k" :value="k" style="margin-right: 14px">
-              {{ k }}
-            </el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-        <div class="text-muted" style="font-size: 12.5px">
-          引擎单事务提交：任一台失败则整批不生效。
+    <Dialog :open="batchLabelVisible" @update:open="(v: boolean) => (batchLabelVisible = v)">
+      <DialogContent class="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>批量打标签（{{ selected.length }} 台）</DialogTitle>
+          <DialogDescription>引擎单事务提交：任一台失败则整批不生效。</DialogDescription>
+        </DialogHeader>
+        <div class="grid gap-4">
+          <div class="grid gap-1.5">
+            <Label>添加标签（k=v，回车添加；已存在的同 key 会被覆盖）</Label>
+            <Input v-model="batchInput" placeholder="env=prod" @keyup.enter="addBatchChip" />
+            <div v-if="batchChips.length > 0" class="flex flex-wrap gap-1.5">
+              <span
+                v-for="chip in batchChips"
+                :key="chip"
+                class="inline-flex items-center gap-1 rounded-md border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+              >
+                {{ chip }}
+                <button class="transition-opacity hover:opacity-70" @click="batchChips = batchChips.filter((c) => c !== chip)">
+                  <X class="size-3" />
+                </button>
+              </span>
+            </div>
+          </div>
+          <div v-if="removableKeys.length > 0" class="grid gap-1.5">
+            <Label>删除标签（所选机器现有标签的并集）</Label>
+            <div class="flex flex-wrap gap-x-4 gap-y-2">
+              <label
+                v-for="k in removableKeys"
+                :key="k"
+                class="flex cursor-pointer items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  :model-value="batchRemoveKeys.includes(k)"
+                  @update:model-value="(v: boolean | 'indeterminate') => {
+                    if (v === 'indeterminate') return
+                    batchRemoveKeys = v ? [...batchRemoveKeys, k] : batchRemoveKeys.filter((x) => x !== k)
+                  }"
+                />
+                {{ k }}
+              </label>
+            </div>
+          </div>
         </div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchLabelVisible = false">取消</el-button>
-        <el-button type="primary" :loading="batchApplying" @click="applyBatchLabels">应用到选中机器</el-button>
-      </template>
-    </el-dialog>
+        <DialogFooter>
+          <Button variant="outline" @click="batchLabelVisible = false">取消</Button>
+          <Button :disabled="batchApplying" @click="applyBatchLabels">
+            应用到选中机器
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
-
-<style scoped>
-.toolbar {
-  margin-bottom: 14px;
-}
-.filters {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.chips {
-  margin-top: 10px;
-  display: flex;
-  gap: 6px;
-}
-.label-tag {
-  margin-right: 4px;
-}
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 12px;
-}
-.mt {
-  margin-top: 10px;
-}
-.cpu-model {
-  font-size: 12px;
-  max-width: 240px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-</style>

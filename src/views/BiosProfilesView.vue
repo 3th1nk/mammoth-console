@@ -1,14 +1,40 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Delete } from '@element-plus/icons-vue'
+import { ChevronDown, ChevronRight, LoaderCircle, Plus, RefreshCcw, Trash2 } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { biosProfilesKey } from '@/api/queryKeys'
+import { confirm } from '@/composables/confirm'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
 import { uuid } from '@/utils/uuid'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import EmptyState from '@/components/EmptyState.vue'
 
 /**
  * BIOS 基线模板(docs/07-bmc.md §6.2,roadmap 下一阶段 13):命名式声明
@@ -148,11 +174,11 @@ function addRow() {
   attrRows.value.push(emptyRow())
 }
 
-function onModeChange(m: string | number | boolean | undefined) {
+function onModeChange(m: 'table' | 'json') {
   if (m === 'json') {
     const err = tableRowsError(attrRows.value)
     if (err) {
-      ElMessage.warning(`表格校验未通过（${err}），修正后再切换`)
+      toast.warning(`表格校验未通过（${err}），修正后再切换`)
       attrMode.value = 'table'
       return
     }
@@ -163,7 +189,7 @@ function onModeChange(m: string | number | boolean | undefined) {
       if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('属性必须是 JSON 对象')
       attrRows.value = jsonToRows(v as Record<string, unknown>)
     } catch (e) {
-      ElMessage.warning(`JSON 无效（${(e as Error).message}），修正后再切换`)
+      toast.warning(`JSON 无效（${(e as Error).message}），修正后再切换`)
       attrMode.value = 'json'
     }
   }
@@ -178,12 +204,12 @@ function applyCopy(id: string) {
   if (attrMode.value === 'json') newAttrsText.value = JSON.stringify(attrs, null, 2)
   else attrRows.value = jsonToRows(attrs)
   copyFrom.value = ''
-  ElMessage.success(`已载入「${p.name}」的属性`)
+  toast.success(`已载入「${p.name}」的属性`)
 }
 
 async function createProfile() {
   if (attrsError.value) {
-    ElMessage.warning(attrsError.value)
+    toast.warning(attrsError.value)
     return
   }
   creating.value = true
@@ -194,215 +220,231 @@ async function createProfile() {
       header: { 'Idempotency-Key': uuid() },
       body: { name: newName.value, attributes: attrs as never },
     }))
-    ElMessage.success('基线已创建')
+    toast.success('基线已创建')
     createVisible.value = false
     resetForm()
     void qc.invalidateQueries({ queryKey: biosProfilesKey })
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     creating.value = false
   }
 }
 
 async function deleteProfile(p: BiosProfile) {
-  try {
-    await ElMessageBox.confirm(
-      `删除基线「${p.name}」？机器赋值将自动清除（不影响机器本身）。`,
-      '删除基线',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  const ok = await confirm({
+    title: '删除基线',
+    description: `删除基线「${p.name}」？机器赋值将自动清除（不影响机器本身）。`,
+    confirmText: '删除',
+    destructive: true,
+  })
+  if (!ok) return
   try {
     await unwrap(await getClient().DELETE('/api/v1/bios-profiles/{id}', { params: { path: { id: p.id } } }))
-    ElMessage.success('基线已删除')
+    toast.success('基线已删除')
     void qc.invalidateQueries({ queryKey: biosProfilesKey })
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   }
 }
 
+// expand 行
+const expanded = ref<Set<string>>(new Set())
+function toggleExpand(id: string) {
+  const next = new Set(expanded.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expanded.value = next
+}
 
 function fmtAttrs(p: BiosProfile): string {
   return Object.entries(p.attributes ?? {})
     .map(([k, v]) => `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`)
     .join('\n')
 }
+
+const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: 'string', label: '字符串' },
+  { value: 'number', label: '数字' },
+  { value: 'boolean', label: '布尔' },
+  { value: 'json', label: 'JSON' },
+]
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">BIOS 基线模板</h1>
+  <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <el-button type="primary" :icon="Plus" @click="openCreate">新建基线</el-button>
-        <el-button :icon="Refresh" @click="listQuery.refetch()">刷新</el-button>
+        <h2 class="text-2xl font-bold tracking-tight">BIOS 基线模板</h2>
+        <p class="text-sm text-muted-foreground">命名式属性集 · 共 {{ profiles.length }} 条</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <Button size="sm" @click="openCreate"><Plus class="size-4" /> 新建基线</Button>
+        <Button variant="outline" size="sm" @click="listQuery.refetch()">
+          <RefreshCcw class="size-4" /> 刷新
+        </Button>
       </div>
     </div>
 
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      class="mb"
-      title="命名式 BIOS 属性集：漂移巡检的参照与批量下发的载荷源。属性名用厂商自己的名字与 JSON 类型；机器赋值在机器详情的「BIOS 基线」卡片。"
-    />
-    <el-card shadow="never">
-      <el-table :data="profiles" v-loading="listQuery.isFetching.value">
-        <el-table-column type="expand">
-          <template #default="{ row }">
-            <pre class="attrs-pre">{{ fmtAttrs(row) }}</pre>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="200">
-          <template #default="{ row }"><span class="mono">{{ row.name }}</span></template>
-        </el-table-column>
-        <el-table-column label="属性数" width="90">
-          <template #default="{ row }">{{ Object.keys(row.attributes ?? {}).length }}</template>
-        </el-table-column>
-        <el-table-column label="创建时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="danger" plain @click.stop="deleteProfile(row)">删除</el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <el-empty :image-size="80" description="尚无基线模板">
-            <div class="text-muted" style="font-size: 13px; max-width: 440px; line-height: 1.7">
+    <Alert class="border-blue-500/30 bg-blue-500/5">
+      <AlertDescription>
+        命名式 BIOS 属性集：漂移巡检的参照与批量下发的载荷源。属性名用厂商自己的名字与 JSON
+        类型；机器赋值在机器详情的「BIOS 基线」卡片。
+      </AlertDescription>
+    </Alert>
+
+    <Alert v-if="listQuery.error.value" variant="destructive">
+      <AlertTitle>{{ errorMessage(listQuery.error.value) }}</AlertTitle>
+    </Alert>
+
+    <Card>
+      <CardContent>
+        <Skeleton v-if="listQuery.isPending.value" class="h-56 w-full" />
+        <div v-else class="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow class="bg-muted/50 hover:bg-muted/50">
+                <TableHead class="w-10" />
+                <TableHead class="min-w-[200px]">名称</TableHead>
+                <TableHead class="w-24">属性数</TableHead>
+                <TableHead class="w-44">创建时间</TableHead>
+                <TableHead class="w-24 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <template v-for="row in profiles" :key="row.id">
+                <TableRow>
+                  <TableCell>
+                    <button
+                      class="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      @click.stop="toggleExpand(row.id)"
+                    >
+                      <ChevronRight v-if="!expanded.has(row.id)" class="size-4" />
+                      <ChevronDown v-else class="size-4" />
+                    </button>
+                  </TableCell>
+                  <TableCell><span class="font-mono text-sm">{{ row.name }}</span></TableCell>
+                  <TableCell class="text-muted-foreground">{{ Object.keys(row.attributes ?? {}).length }}</TableCell>
+                  <TableCell class="text-muted-foreground">{{ formatTime(row.created_at) }}</TableCell>
+                  <TableCell class="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-8 text-destructive hover:text-destructive"
+                      @click.stop="deleteProfile(row)"
+                    >
+                      <Trash2 class="size-4" /> 删除
+                    </Button>
+                  </TableCell>
+                </TableRow>
+                <TableRow v-if="expanded.has(row.id)" class="hover:bg-transparent">
+                  <TableCell :colspan="5" class="bg-muted/30 p-0">
+                    <pre class="mx-6 my-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/50 p-3 font-mono text-xs leading-relaxed">{{ fmtAttrs(row) }}</pre>
+                  </TableCell>
+                </TableRow>
+              </template>
+            </TableBody>
+          </Table>
+          <EmptyState v-if="profiles.length === 0" description="尚无基线模板">
+            <p class="max-w-[440px] text-xs leading-relaxed text-muted-foreground">
               基线是命名式的 BIOS 属性集合，漂移巡检以它为参照、批量下发以它为载荷源；
               创建后可在机器详情的「BIOS 基线」卡片赋给机器。
-            </div>
-            <el-button type="primary" :icon="Plus" @click="openCreate">新建第一个基线</el-button>
-          </el-empty>
-        </template>
-      </el-table>
-      <el-alert
-        v-if="listQuery.error.value"
-        :title="errorMessage(listQuery.error.value)"
-        type="error"
-        :closable="false"
-        show-icon
-        class="mt"
-      />
-    </el-card>
+            </p>
+            <Button size="sm" class="mt-1" @click="openCreate"><Plus class="size-4" /> 新建第一个基线</Button>
+          </EmptyState>
+        </div>
+      </CardContent>
+    </Card>
 
-    <el-dialog v-model="createVisible" title="新建 BIOS 基线" width="640px">
-      <el-form label-position="top" @submit.prevent="createProfile">
-        <el-form-item label="名称" required>
-          <el-input v-model="newName" placeholder="如 baseline-2288H-prod" />
-        </el-form-item>
-        <el-form-item v-if="profiles.length" label="从现有基线复制（可选）">
-          <el-select
-            v-model="copyFrom"
-            placeholder="选择基线，载入其属性后微调"
-            style="width: 100%"
-            @change="applyCopy"
-          >
-            <el-option v-for="p in profiles" :key="p.id" :label="p.name" :value="p.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="属性编辑方式">
-          <el-radio-group v-model="attrMode" @change="onModeChange">
-            <el-radio-button value="table">表格</el-radio-button>
-            <el-radio-button value="json">JSON</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item
-          :label="attrMode === 'table' ? '属性（厂商属性名 + 带类型值）' : '属性 JSON'"
-          required
-        >
-          <div v-if="attrMode === 'table'" class="attrs-editor">
-            <div v-for="(row, i) in attrRows" :key="i" class="attr-row">
-              <el-input v-model="row.key" placeholder="属性名" class="mono attr-key" />
-              <el-input
-                v-if="row.type === 'json'"
-                v-model="row.value"
-                type="textarea"
-                :autosize="{ minRows: 1, maxRows: 6 }"
-                placeholder="嵌套 JSON 值"
-                class="mono attr-value"
-              />
-              <el-input v-else v-model="row.value" placeholder="值" class="mono attr-value" />
-              <el-select v-model="row.type" class="attr-type">
-                <el-option label="自动" value="auto" />
-                <el-option label="字符串" value="string" />
-                <el-option label="数字" value="number" />
-                <el-option label="布尔" value="boolean" />
-                <el-option label="JSON" value="json" />
-              </el-select>
-              <el-button
-                :icon="Delete"
-                text
-                :disabled="attrRows.length === 1"
-                @click="attrRows.splice(i, 1)"
-              />
+    <Dialog :open="createVisible" @update:open="(v: boolean) => (createVisible = v)">
+      <DialogContent class="sm:max-w-[640px]">
+        <DialogHeader>
+          <DialogTitle>新建 BIOS 基线</DialogTitle>
+          <DialogDescription>属性名用厂商自己的名字与 JSON 类型。</DialogDescription>
+        </DialogHeader>
+        <form class="grid gap-4" @submit.prevent="createProfile">
+          <div class="grid gap-1.5">
+            <Label for="bp-name">名称</Label>
+            <Input id="bp-name" v-model="newName" placeholder="如 baseline-2288H-prod" />
+          </div>
+          <div v-if="profiles.length" class="grid gap-1.5">
+            <Label>从现有基线复制（可选）</Label>
+            <Select
+              :model-value="copyFrom || 'none'"
+              @update:model-value="(v: unknown) => applyCopy(String(v))"
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择基线，载入其属性后微调" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">不复制</SelectItem>
+                <SelectItem v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="grid gap-1.5">
+            <Label>属性编辑方式</Label>
+            <div class="flex w-fit rounded-md border p-0.5">
+              <button
+                v-for="m in ['table', 'json'] as const"
+                :key="m"
+                type="button"
+                class="rounded-sm px-3 py-1 text-sm transition-colors"
+                :class="attrMode === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                @click="onModeChange(m)"
+              >
+                {{ m === 'table' ? '表格' : 'JSON' }}
+              </button>
             </div>
-            <el-button text type="primary" :icon="Plus" @click="addRow">添加属性</el-button>
           </div>
-          <el-input v-else v-model="newAttrsText" type="textarea" :rows="10" class="mono" />
-          <div v-if="attrsError" class="attrs-error">{{ attrsError }}</div>
-          <div v-else-if="attrMode === 'table'" class="attrs-hint">
-            自动类型按值推断：true/false → 布尔、纯数字 → 数字、其余 → 字符串；嵌套值选 JSON 类型。
+          <div class="grid gap-1.5">
+            <Label>{{ attrMode === 'table' ? '属性（厂商属性名 + 带类型值）' : '属性 JSON' }}</Label>
+            <div v-if="attrMode === 'table'" class="grid gap-2">
+              <div v-for="(row, i) in attrRows" :key="i" class="flex items-start gap-2">
+                <Input v-model="row.key" placeholder="属性名" class="flex-1 font-mono" />
+                <Textarea
+                  v-if="row.type === 'json'"
+                  v-model="row.value"
+                  :rows="2"
+                  placeholder="嵌套 JSON 值"
+                  class="flex-1 font-mono"
+                />
+                <Input v-else v-model="row.value" placeholder="值" class="flex-1 font-mono" />
+                <Select v-model="row.type" class="w-24 shrink-0">
+                  <SelectTrigger class="w-24"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="t in ATTR_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="size-9 shrink-0 text-muted-foreground hover:text-destructive"
+                  :disabled="attrRows.length === 1"
+                  @click="attrRows.splice(i, 1)"
+                >
+                  <Trash2 class="size-4" />
+                </Button>
+              </div>
+              <Button variant="ghost" size="sm" class="w-fit text-primary" @click="addRow">
+                <Plus class="size-4" /> 添加属性
+              </Button>
+            </div>
+            <Textarea v-else v-model="newAttrsText" :rows="10" class="font-mono" />
+            <p v-if="attrsError" class="text-xs text-destructive">{{ attrsError }}</p>
+            <p v-else-if="attrMode === 'table'" class="text-xs text-muted-foreground">
+              自动类型按值推断：true/false → 布尔、纯数字 → 数字、其余 → 字符串；嵌套值选 JSON 类型。
+            </p>
           </div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" :disabled="!!attrsError || !newName" @click="createProfile">创建</el-button>
-      </template>
-    </el-dialog>
+          <DialogFooter>
+            <Button type="button" variant="outline" @click="createVisible = false">取消</Button>
+            <Button type="submit" :disabled="creating || !!attrsError || !newName">
+              <LoaderCircle v-if="creating" class="size-4 animate-spin" /> 创建
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
-
-<style scoped>
-.mb {
-  margin-bottom: 14px;
-}
-.mt {
-  margin-top: 10px;
-}
-.attrs-pre {
-  margin: 4px 0;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-.attrs-error {
-  color: var(--el-color-danger);
-  font-size: 12px;
-  margin-top: 4px;
-}
-.attrs-hint {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  margin-top: 4px;
-}
-.attrs-editor {
-  width: 100%;
-}
-.attr-row {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-.attr-key {
-  flex: 1.2;
-}
-.attr-value {
-  flex: 2;
-}
-.attr-type {
-  width: 96px;
-  flex: none;
-}
-.mono :deep(input),
-.mono :deep(textarea) {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12.5px;
-}
-</style>
