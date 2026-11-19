@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Plus, RefreshCcw, Search, Tag, X, Zap } from 'lucide-vue-next'
 import { useQuery } from '@tanstack/vue-query'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { machineListKey } from '@/api/queryKeys'
@@ -39,6 +40,7 @@ type MachineState = components['schemas']['MachineState']
 
 const PAGE_SIZE = 50
 
+const { t } = useI18n()
 const router = useRouter()
 const stateFilter = ref<MachineState | ''>('')
 const q = ref('')
@@ -91,7 +93,7 @@ function addLabel() {
   const v = labelInput.value.trim()
   if (!v) return
   if (!/^[^=]+=[^=]*$/.test(v)) {
-    toast.warning('标签过滤格式为 k=v，例如 env=prod')
+    toast.warning(t('machines.labelFormatError'))
     return
   }
   if (!labelChips.value.includes(v)) labelChips.value = [...labelChips.value, v]
@@ -177,7 +179,7 @@ function addBatchChip() {
   const v = batchInput.value.trim()
   if (!v) return
   if (!/^[^=]+=[^=]*$/.test(v)) {
-    toast.warning('标签格式为 k=v')
+    toast.warning(t('machines.batchFormatError'))
     return
   }
   if (!batchChips.value.includes(v)) batchChips.value = [...batchChips.value, v]
@@ -193,11 +195,11 @@ async function applyBatchLabels() {
   )
   const clash = batchRemoveKeys.value.filter((k) => k in newLabels)
   if (clash.length > 0) {
-    toast.warning(`标签 ${clash.join('、')} 同时在添加与删除里，请二选一`)
+    toast.warning(t('machines.batchClash', { keys: clash.join('、') }))
     return
   }
   if (Object.keys(newLabels).length === 0 && batchRemoveKeys.value.length === 0) {
-    toast.warning('请先添加或勾选要删除的标签')
+    toast.warning(t('machines.batchEmpty'))
     return
   }
   batchApplying.value = true
@@ -211,7 +213,7 @@ async function applyBatchLabels() {
         },
       }),
     )
-    toast.success(`已为 ${selected.value.length} 台机器更新标签`)
+    toast.success(t('machines.batchDone', { n: selected.value.length }))
     batchLabelVisible.value = false
     void query.refetch()
   } catch (e) {
@@ -236,24 +238,24 @@ function onActionSubmitted() {
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">机器</h2>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('machines.title') }}</h2>
         <p class="text-sm text-muted-foreground">
-          台账与状态
-          <template v-if="selected.length > 0">· 已选 {{ selected.length }} 台</template>
+          {{ t('machines.subtitle') }}
+          <template v-if="selected.length > 0">{{ t('machines.selected', { n: selected.length }) }}</template>
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" :disabled="selected.length === 0" @click="startInstall">
-          <Zap class="size-4" /> 装机{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
+          <Zap class="size-4" /> {{ selected.length > 0 ? t('machines.installN', { n: selected.length }) : t('machines.install') }}
         </Button>
         <Button variant="outline" size="sm" :disabled="selected.length === 0" @click="openBatchLabels">
-          <Tag class="size-4" /> 打标签{{ selected.length > 0 ? `（${selected.length} 台）` : '' }}
+          <Tag class="size-4" /> {{ selected.length > 0 ? t('machines.batchLabelN', { n: selected.length }) : t('machines.batchLabel') }}
         </Button>
         <Button variant="outline" size="sm" @click="registerVisible = true">
-          <Plus class="size-4" /> 注册机器
+          <Plus class="size-4" /> {{ t('machines.register') }}
         </Button>
         <Button variant="outline" size="sm" @click="query.refetch()">
-          <RefreshCcw class="size-4" /> 刷新
+          <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
         </Button>
       </div>
     </div>
@@ -267,29 +269,29 @@ function onActionSubmitted() {
         <div class="flex flex-wrap items-center gap-2">
           <Select v-model="stateModel">
             <SelectTrigger class="w-[130px]">
-              <SelectValue placeholder="全部状态" />
+              <SelectValue :placeholder="t('machines.filterAllStates')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="registering">注册中</SelectItem>
-              <SelectItem value="discovering">盘查中</SelectItem>
-              <SelectItem value="ready">就绪</SelectItem>
-              <SelectItem value="error">异常</SelectItem>
+              <SelectItem value="all">{{ t('machines.filterAllStates') }}</SelectItem>
+              <SelectItem value="registering">{{ t('states.machineRegistering') }}</SelectItem>
+              <SelectItem value="discovering">{{ t('states.machineDiscovering') }}</SelectItem>
+              <SelectItem value="ready">{{ t('states.machineReady') }}</SelectItem>
+              <SelectItem value="error">{{ t('states.machineError') }}</SelectItem>
             </SelectContent>
           </Select>
           <Input
             v-model="qInput"
-            placeholder="序列号 / BMC 地址 / 厂商 / 型号 / 标签 / ID"
+            :placeholder="t('machines.searchPlaceholder')"
             class="w-[320px]"
             @keyup.enter="applySearch"
           />
           <Input
             v-model="labelInput"
-            placeholder="标签过滤 k=v，回车添加"
+            :placeholder="t('machines.labelPlaceholder')"
             class="w-[220px]"
             @keyup.enter="addLabel"
           />
-          <Button size="sm" @click="applySearch"><Search class="size-4" /> 搜索</Button>
+          <Button size="sm" @click="applySearch"><Search class="size-4" /> {{ t('common.search') }}</Button>
         </div>
         <div v-if="labelChips.length > 0" class="flex flex-wrap gap-1.5">
           <span
@@ -312,21 +314,21 @@ function onActionSubmitted() {
                 <TableHead data-sel-col class="sticky left-0 z-10 w-10 bg-inherit" @click.stop>
                   <Checkbox
                     :model-value="allSelected"
-                    aria-label="全选"
+                    :aria-label="t('machines.selectAll')"
                     @update:model-value="toggleAll"
                   />
                 </TableHead>
-                <TableHead class="w-24">状态</TableHead>
-                <TableHead class="w-36">ID</TableHead>
-                <TableHead class="min-w-[130px]">BMC 地址</TableHead>
-                <TableHead class="w-20">协议</TableHead>
-                <TableHead class="min-w-[130px]">厂商 / 型号</TableHead>
-                <TableHead class="min-w-[110px]">序列号</TableHead>
-                <TableHead class="min-w-[130px]">CPU / 内存</TableHead>
-                <TableHead class="w-24">电源</TableHead>
-                <TableHead class="min-w-[110px]">标签</TableHead>
-                <TableHead class="w-40">注册时间</TableHead>
-                <TableHead class="sticky right-0 z-10 w-32 bg-inherit text-right">操作</TableHead>
+                <TableHead class="w-24">{{ t('machines.colState') }}</TableHead>
+                <TableHead class="w-36">{{ t('machines.colId') }}</TableHead>
+                <TableHead class="min-w-[130px]">{{ t('machines.colBmc') }}</TableHead>
+                <TableHead class="w-20">{{ t('machines.colProtocol') }}</TableHead>
+                <TableHead class="min-w-[130px]">{{ t('machines.colVendor') }}</TableHead>
+                <TableHead class="min-w-[110px]">{{ t('machines.colSerial') }}</TableHead>
+                <TableHead class="min-w-[130px]">{{ t('machines.colCpu') }}</TableHead>
+                <TableHead class="w-24">{{ t('machines.colPower') }}</TableHead>
+                <TableHead class="min-w-[110px]">{{ t('machines.colLabels') }}</TableHead>
+                <TableHead class="w-40">{{ t('machines.colCreatedAt') }}</TableHead>
+                <TableHead class="sticky right-0 z-10 w-32 bg-inherit text-right">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -336,7 +338,7 @@ function onActionSubmitted() {
                 <TableCell data-sel-col class="sticky left-0 z-10 bg-inherit pr-0" @click.stop>
                   <Checkbox
                     :model-value="selectedIds.has(row.id)"
-                    :aria-label="`选择 ${row.id}`"
+                    :aria-label="t('machines.selectRow', { id: row.id })"
                     @update:model-value="() => toggleRow(row)"
                   />
                 </TableCell>
@@ -390,10 +392,8 @@ function onActionSubmitted() {
               </TableRow>
             </TableBody>
           </Table>
-          <EmptyState v-if="rows.length === 0" description="还没有机器">
-            <p class="text-xs text-muted-foreground">
-              通过 API 注册（POST /api/v1/machines），或开启引擎零注册等机器自己出现。
-            </p>
+          <EmptyState v-if="rows.length === 0" :description="t('machines.empty')">
+            <p class="text-xs text-muted-foreground">{{ t('machines.emptyHint') }}</p>
           </EmptyState>
         </div>
 
@@ -403,7 +403,7 @@ function onActionSubmitted() {
             class="text-xs text-muted-foreground underline-offset-2 hover:underline"
             @click="clearSelection"
           >
-            清除选择（{{ selected.length }}）
+            {{ t('machines.clearSelection', { n: selected.length }) }}
           </button>
           <span v-else />
           <Pager
@@ -421,12 +421,12 @@ function onActionSubmitted() {
     <Dialog :open="batchLabelVisible" @update:open="(v: boolean) => (batchLabelVisible = v)">
       <DialogContent class="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>批量打标签（{{ selected.length }} 台）</DialogTitle>
-          <DialogDescription>引擎单事务提交：任一台失败则整批不生效。</DialogDescription>
+          <DialogTitle>{{ t('machines.batchTitle', { n: selected.length }) }}</DialogTitle>
+          <DialogDescription>{{ t('machines.batchDesc') }}</DialogDescription>
         </DialogHeader>
         <div class="grid gap-4">
           <div class="grid gap-1.5">
-            <Label>添加标签（k=v，回车添加；已存在的同 key 会被覆盖）</Label>
+            <Label>{{ t('machines.batchAddLabel') }}</Label>
             <Input v-model="batchInput" placeholder="env=prod" @keyup.enter="addBatchChip" />
             <div v-if="batchChips.length > 0" class="flex flex-wrap gap-1.5">
               <span
@@ -442,7 +442,7 @@ function onActionSubmitted() {
             </div>
           </div>
           <div v-if="removableKeys.length > 0" class="grid gap-1.5">
-            <Label>删除标签（所选机器现有标签的并集）</Label>
+            <Label>{{ t('machines.batchRemoveLabel') }}</Label>
             <div class="flex flex-wrap gap-x-4 gap-y-2">
               <label
                 v-for="k in removableKeys"
@@ -462,9 +462,9 @@ function onActionSubmitted() {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="batchLabelVisible = false">取消</Button>
+          <Button variant="outline" @click="batchLabelVisible = false">{{ t('common.cancel') }}</Button>
           <Button :disabled="batchApplying" @click="applyBatchLabels">
-            应用到选中机器
+            {{ t('machines.batchApply') }}
           </Button>
         </DialogFooter>
       </DialogContent>
