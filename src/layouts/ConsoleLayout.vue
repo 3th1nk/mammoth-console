@@ -169,7 +169,10 @@ async function copyPassword() {
   <SidebarProvider>
     <AppSidebar :pending-count="pendingCount" />
 
-    <SidebarInset class="overflow-hidden">
+    <!-- 壳固定视口高(inset 变体上下各 0.5rem margin,故减 1rem),滚动收敛到
+         内层 overflow-auto——reka 弹层(Select/Combobox/Dialog)打开时会锁
+         body 的 overflow 且可能残留,内容滚动与 body 解耦后不再被殃及 -->
+    <SidebarInset class="h-[calc(100svh-1rem)] overflow-hidden">
       <header
         class="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur"
       >
