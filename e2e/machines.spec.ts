@@ -13,11 +13,11 @@ test.describe('机器生命周期', () => {
     // 注册(内联新建凭证,fake 协议)
     await page.goto('/machines')
     await page.getByRole('button', { name: '注册机器' }).click()
-    const dlg = page.locator('.el-dialog').filter({ hasText: '注册' }).first()
+    const dlg = page.locator('[data-slot=dialog-content]').filter({ hasText: '注册机器' }).first()
     await dlg.getByPlaceholder(/203\.0\.113\.10/).fill(BMC)
-    // el-radio-button 的真实 radio input 是隐藏的,点可视 label
-    await dlg.locator('.el-radio-button').filter({ hasText: '演示' }).click()
-    await dlg.locator('.el-radio-button').filter({ hasText: '新建凭证' }).click()
+    // 协议/凭证模式是 segmented radio:点可视 label
+    await dlg.locator('label').filter({ hasText: '演示' }).click()
+    await dlg.locator('label').filter({ hasText: '新建凭证' }).click()
     await dlg.getByPlaceholder(/bmc-rack01/).fill(CRED)
     await dlg.getByLabel('用户名').fill('admin')
     await dlg.getByLabel('密码').fill('hunter2')
@@ -30,33 +30,33 @@ test.describe('机器生命周期', () => {
 
     // 列表:行出现
     await page.goto('/machines')
-    const row = page.locator('.el-table__row').filter({ hasText: BMC })
+    const row = page.locator('[data-slot=table-row]').filter({ hasText: BMC })
     await expect(row).toBeVisible()
 
-    // 批量标签(引擎 A5 端点:添加 + 全有或全无);checkbox 真实 input 隐藏,点外壳
-    await row.locator('.el-checkbox').click()
+    // 批量标签(引擎 A5 端点:添加 + 全有或全无)
+    await row.locator('button[role=checkbox]').click()
     await page.getByRole('button', { name: /打标签/ }).click()
-    const labelDlg = page.locator('.el-dialog').filter({ hasText: '批量打标签' })
+    const labelDlg = page.locator('[data-slot=dialog-content]').filter({ hasText: '批量打标签' })
     await labelDlg.getByPlaceholder('env=prod').fill('env=e2e')
     await labelDlg.getByPlaceholder('env=prod').press('Enter')
     await labelDlg.getByRole('button', { name: '应用到选中机器' }).click()
-    await expect(page.locator('.el-message--success')).toContainText('更新标签')
+    await expect(page.locator('[data-sonner-toast][data-type=success]')).toContainText('更新标签')
     await expect(row).toContainText('env=e2e')
 
     // 命令面板按 ID 片段搜索跳转(全局搜索)
     await page.locator('.search-entry').click()
     await page.getByPlaceholder(/搜索机器/).fill('e2e-node')
-    const hit = page.locator('.palette-dialog .row').filter({ hasText: BMC })
+    const hit = page.locator('[data-slot=command-item]').filter({ hasText: BMC })
     await expect(hit).toBeVisible({ timeout: 10_000 })
-    // 唯一机器结果即第一项(activeIdx=0);行 hover 重渲染会让 click 判 unstable,走键盘
+    // 唯一机器结果即高亮项;Listbox 支持 Enter 选中
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/machines\/mch_/, { timeout: 10_000 })
 
     // 删除收尾
     await page.goto('/machines')
     await row.getByRole('button', { name: '更多' }).click()
-    await page.getByRole('menuitem', { name: '注销机器…' }).click()
-    await page.getByRole('button', { name: '注销', exact: true }).click()
+    await page.getByRole('menuitem', { name: '注销机器' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '注销', exact: true }).click()
     await expect(row).toHaveCount(0, { timeout: 15_000 })
   })
 })

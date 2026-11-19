@@ -1,22 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Badge } from '@/components/ui/badge'
+import { powerStyle, toneBadgeStyle } from '@/utils/stateColors'
 
+/** 电源状态徽章（BMC power_state）。 */
 const props = defineProps<{ state: string }>()
 
-const style = computed(() => {
-  switch (props.state) {
-    case 'on':
-      return { label: '运行中', type: 'success' as const }
-    case 'off':
-      return { label: '已关机', type: 'info' as const }
-    default:
-      return { label: '电源未知', type: 'warning' as const }
-  }
-})
+const style = computed(() => powerStyle(props.state))
+const badgeStyle = computed(() => toneBadgeStyle(style.value.tone))
 </script>
 
 <template>
-  <el-tag :type="style.type" effect="plain" size="small" disable-transitions>
+  <Badge variant="outline" class="rounded-md font-medium" :style="badgeStyle">
     {{ style.label }}
-  </el-tag>
+  </Badge>
 </template>

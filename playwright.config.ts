@@ -12,6 +12,9 @@ export default defineConfig({
   workers: 1, // 共享一台引擎,串行跑避免相互干扰
   reporter: [['list']],
   use: {
+    // 用完整 chromium(headless shell 单独下载较慢;channel=chromium 走
+    // 新 headless 模式跑完整构建)
+    channel: 'chromium',
     baseURL: 'http://localhost:5174',
     trace: 'retain-on-failure',
     locale: 'zh-CN',
@@ -19,7 +22,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'bash e2e/engine.sh',
-      url: 'http://127.0.0.1:8081/healthz',
+      url: 'http://127.0.0.1:8081/readyz',
       reuseExistingServer: true,
       timeout: 120_000,
     },

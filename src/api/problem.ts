@@ -99,7 +99,7 @@ export function codeText(code?: string): string | undefined {
   return code ? CODE_MESSAGES[code] : undefined
 }
 
-/** 任意抛出物 → 展示文案（配合 ElMessage.error 使用）。 */
+/** 任意抛出物 → 展示文案（配合 toast.error 使用）。 */
 export function errorMessage(e: unknown): string {
   if (e instanceof ConsoleApiError) return e.message
   if (e instanceof DOMException && e.name === 'TimeoutError') {

@@ -1,19 +1,51 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { Check, ChevronsUpDown, ChevronDown, ChevronRight, Plus, RefreshCcw } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { Plus, Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { toast } from 'vue-sonner'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { eventsListKey, eventDomain, webhooksKey } from '@/api/queryKeys'
+import { confirm } from '@/composables/confirm'
 import type { components } from '@/api/types.gen'
-import { formatTime } from '@/utils/format'
-import { copyToClipboard } from '@/utils/clipboard'
+import { EVENT_TYPE_GROUPS, eventTypeLabel, resourceTypeLabel } from '@/utils/events'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
-  EVENT_TYPE_GROUPS,
-  eventTypeLabel,
-  resourceTypeLabel,
-} from '@/utils/events'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import EmptyState from '@/components/EmptyState.vue'
+import Pager from '@/components/Pager.vue'
+import { copyToClipboard } from '@/utils/clipboard'
+import { formatTime } from '@/utils/format'
 
 type Webhook = components['schemas']['Webhook']
 
@@ -23,6 +55,7 @@ const activeTab = ref<'events' | 'webhooks'>('events')
 // ── 事件查询 ────────────────────────────────────────────────────────────────
 const rtFilter = ref<string>('')
 const ridFilter = ref('')
+const ridInput = ref('')
 const typeFilter = ref('')
 const cursor = ref<string | undefined>(undefined)
 const cursorStack = ref<(string | undefined)[]>([])
@@ -51,9 +84,37 @@ const eventsQuery = useQuery({
 const eventRows = computed(() => eventsQuery.data.value?.items ?? [])
 const nextCursor = computed(() => eventsQuery.data.value?.next_cursor ?? null)
 
+// expand 行:payload JSON
+const expanded = ref<Set<number>>(new Set())
+function toggleExpand(id: number) {
+  const next = new Set(expanded.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expanded.value = next
+}
+
+function prettyPayload(p: unknown): string {
+  try {
+    return JSON.stringify(p, null, 2)
+  } catch {
+    return String(p)
+  }
+}
+
+// 事件类型 Combobox:分组 + 可搜索 + allow-create(引擎 additive 新类型)
+const typeOpen = ref(false)
+const typeSearch = ref('')
+
+function setType(v: string) {
+  typeFilter.value = v
+  typeOpen.value = false
+  resetPaging()
+}
+
 function resetPaging() {
   cursor.value = undefined
   cursorStack.value = []
+  expanded.value = new Set()
 }
 function nextPage() {
   if (!nextCursor.value) return
@@ -64,14 +125,6 @@ function prevPage() {
   const prev = cursorStack.value[cursorStack.value.length - 1]
   cursorStack.value = cursorStack.value.slice(0, -1)
   cursor.value = prev
-}
-
-function prettyPayload(p: unknown): string {
-  try {
-    return JSON.stringify(p, null, 2)
-  } catch {
-    return String(p)
-  }
 }
 
 // ── Webhooks 管理 ───────────────────────────────────────────────────────────
@@ -94,7 +147,7 @@ function openCreate() {
 
 async function submitCreate() {
   if (!/^https?:\/\//.test(form.url.trim())) {
-    ElMessage.warning('回调地址需为 http(s) URL')
+    toast.warning('回调地址需为 http(s) URL')
     return
   }
   creating.value = true
@@ -115,28 +168,26 @@ async function submitCreate() {
     }
     void queryClient.invalidateQueries({ queryKey: webhooksKey })
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     creating.value = false
   }
 }
 
 async function removeHook(h: Webhook) {
-  try {
-    await ElMessageBox.confirm(`删除后不再向 ${h.url} 投递事件。确定删除？`, '删除 webhook', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-    })
-  } catch {
-    return
-  }
+  const ok = await confirm({
+    title: '删除 webhook',
+    description: `删除后不再向 ${h.url} 投递事件。确定删除？`,
+    confirmText: '删除',
+    destructive: true,
+  })
+  if (!ok) return
   try {
     await unwrap(await getClient().DELETE('/api/v1/webhooks/{id}', { params: { path: { id: h.id } } }))
-    ElMessage.success('已删除')
+    toast.success('已删除')
     void hooksQuery.refetch()
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   }
 }
 
@@ -144,263 +195,283 @@ const RESOURCE_TYPES = ['job', 'task', 'machine', 'credential', 'pending', 'webh
 
 function copySecret() {
   if (createdSecret.value?.secret) {
-    void copyToClipboard(createdSecret.value.secret).then((ok) =>
-      ok ? ElMessage.success('已复制到剪贴板') : ElMessage.warning('复制失败，请手动选中复制'),
-    )
+    void copyToClipboard(createdSecret.value.secret).then((ok) => {
+      if (ok) toast.success('已复制到剪贴板')
+      else toast.warning('复制失败，请手动选中复制')
+    })
   }
 }
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">事件</h1>
-      <el-button :icon="Refresh" @click="queryClient.invalidateQueries({ queryKey: eventDomain }); queryClient.invalidateQueries({ queryKey: webhooksKey })">
-        刷新
-      </el-button>
+  <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight">事件</h2>
+        <p class="text-sm text-muted-foreground">引擎事件审计与 Webhooks 订阅</p>
+      </div>
+      <Button variant="outline" size="sm" @click="queryClient.invalidateQueries({ queryKey: eventDomain }); queryClient.invalidateQueries({ queryKey: webhooksKey })">
+        <RefreshCcw class="size-4" /> 刷新
+      </Button>
     </div>
 
-    <el-card shadow="never">
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="事件查询" name="events">
-          <div class="filters">
-            <el-select v-model="rtFilter" placeholder="全部资源类型" clearable style="width: 150px" @change="resetPaging">
-              <el-option v-for="rt in RESOURCE_TYPES" :key="rt" :label="resourceTypeLabel(rt)" :value="rt" />
-            </el-select>
-            <el-input
-              v-model="ridFilter"
-              placeholder="资源 ID 过滤（如 job_x9k2）"
-              clearable
-              style="width: 240px"
-              class="mono"
-              @keyup.enter="resetPaging"
-              @clear="resetPaging"
+    <Tabs v-model="activeTab" class="gap-3">
+      <TabsList class="w-fit">
+        <TabsTrigger value="events">事件查询</TabsTrigger>
+        <TabsTrigger value="webhooks">Webhooks 订阅</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="events" class="mt-0">
+        <Card>
+          <CardContent class="flex flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <Select
+                :model-value="rtFilter || 'all'"
+                @update:model-value="(v: unknown) => { rtFilter = v === 'all' || v == null ? '' : String(v); resetPaging() }"
+              >
+                <SelectTrigger class="w-[150px]">
+                  <SelectValue placeholder="全部资源类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部资源类型</SelectItem>
+                  <SelectItem v-for="rt in RESOURCE_TYPES" :key="rt" :value="rt">{{ resourceTypeLabel(rt) }}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                v-model="ridInput"
+                placeholder="资源 ID 过滤（如 job_x9k2）"
+                class="w-[240px] font-mono"
+                @keyup.enter="ridFilter = ridInput; resetPaging()"
+              />
+              <Popover v-model:open="typeOpen">
+                <PopoverTrigger as-child>
+                  <Button variant="outline" role="combobox" class="w-[260px] justify-between font-normal">
+                    <span class="truncate">
+                      {{ typeFilter ? `${eventTypeLabel(typeFilter)}（${typeFilter}）` : '全部事件类型' }}
+                    </span>
+                    <ChevronsUpDown class="size-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-[320px] p-0" align="start">
+                  <Command>
+                    <CommandInput v-model="typeSearch" placeholder="搜索或输入清单外新类型…" />
+                    <CommandList class="max-h-[300px]">
+                      <CommandEmpty>
+                        <button
+                          class="flex w-full items-center justify-center gap-1.5 px-3 py-2 text-sm text-primary"
+                          @click="setType(typeSearch.trim())"
+                        >
+                          <Plus class="size-3.5" /> 使用「{{ typeSearch.trim() }}」过滤
+                        </button>
+                      </CommandEmpty>
+                      <CommandGroup v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :heading="g.label">
+                        <CommandItem
+                          v-for="t in g.types"
+                          :key="t.value"
+                          :value="`${t.label} ${t.value}`"
+                          @select="setType(t.value)"
+                        >
+                          <Check class="size-4" :class="typeFilter === t.value ? 'opacity-100' : 'opacity-0'" />
+                          <span>{{ t.label }}</span>
+                          <span class="ml-auto font-mono text-[11px] text-muted-foreground">{{ t.value }}</span>
+                        </CommandItem>
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <Button size="sm" @click="ridFilter = ridInput; resetPaging()">查询</Button>
+            </div>
+
+            <Skeleton v-if="eventsQuery.isPending.value" class="h-56 w-full" />
+            <div v-else class="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow class="bg-muted/50 hover:bg-muted/50">
+                    <TableHead class="w-10" />
+                    <TableHead class="w-20">#</TableHead>
+                    <TableHead class="w-28">资源类型</TableHead>
+                    <TableHead class="min-w-[160px]">资源 ID</TableHead>
+                    <TableHead class="min-w-[200px]">事件</TableHead>
+                    <TableHead class="w-44">时间</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <template v-for="row in eventRows" :key="row.id">
+                    <TableRow>
+                      <TableCell>
+                        <button
+                          class="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          @click.stop="toggleExpand(row.id)"
+                        >
+                          <ChevronRight v-if="!expanded.has(row.id)" class="size-4" />
+                          <ChevronDown v-else class="size-4" />
+                        </button>
+                      </TableCell>
+                      <TableCell><span class="font-mono text-xs">{{ row.id }}</span></TableCell>
+                      <TableCell class="text-muted-foreground">{{ resourceTypeLabel(row.resource_type) }}</TableCell>
+                      <TableCell><span class="font-mono text-xs">{{ row.resource_id }}</span></TableCell>
+                      <TableCell>
+                        <div class="text-sm">{{ eventTypeLabel(row.type) }}</div>
+                        <div class="font-mono text-[11px] text-muted-foreground">{{ row.type }}</div>
+                      </TableCell>
+                      <TableCell class="text-muted-foreground">{{ formatTime(row.ts) }}</TableCell>
+                    </TableRow>
+                    <TableRow v-if="expanded.has(row.id)" class="hover:bg-transparent">
+                      <TableCell :colspan="6" class="bg-muted/30 p-0">
+                        <pre class="mx-10 my-3 max-h-[260px] overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs leading-relaxed">{{ prettyPayload(row.payload) }}</pre>
+                      </TableCell>
+                    </TableRow>
+                  </template>
+                </TableBody>
+              </Table>
+              <EmptyState v-if="eventRows.length === 0" description="没有匹配的事件" />
+            </div>
+
+            <Pager
+              hint="游标分页 · 最新在前，下一页向更早翻"
+              :has-prev="cursorStack.length > 0"
+              :has-next="!!nextCursor"
+              @prev="prevPage"
+              @next="nextPage"
             />
-            <el-select
-              v-model="typeFilter"
-              placeholder="全部事件类型"
-              clearable
-              filterable
-              allow-create
-              default-first-option
-              style="width: 240px"
-              @change="resetPaging"
-            >
-              <el-option-group v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :label="g.label">
-                <el-option v-for="t in g.types" :key="t.value" :label="t.label" :value="t.value" />
-              </el-option-group>
-            </el-select>
-            <el-button type="primary" @click="resetPaging">查询</el-button>
-          </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
 
-          <el-table v-loading="eventsQuery.isFetching.value" :data="eventRows" size="small">
-            <el-table-column type="expand">
-              <template #default="{ row }">
-                <pre class="payload mono">{{ prettyPayload(row.payload) }}</pre>
-              </template>
-            </el-table-column>
-            <el-table-column label="#" width="90">
-              <template #default="{ row }"><span class="mono">{{ row.id }}</span></template>
-            </el-table-column>
-            <el-table-column label="资源类型" width="110">
-              <template #default="{ row }">{{ resourceTypeLabel(row.resource_type) }}</template>
-            </el-table-column>
-            <el-table-column label="资源 ID" min-width="170">
-              <template #default="{ row }"><span class="mono">{{ row.resource_id }}</span></template>
-            </el-table-column>
-            <el-table-column label="事件" min-width="210">
-              <template #default="{ row }">
-                <div>{{ eventTypeLabel(row.type) }}</div>
-                <div class="mono type-raw">{{ row.type }}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="时间" width="180">
-              <template #default="{ row }">{{ formatTime(row.ts) }}</template>
-            </el-table-column>
-            <template #empty>
-              <el-empty :image-size="80" description="没有匹配的事件" />
-            </template>
-          </el-table>
-
-          <div class="pager">
-            <span class="text-muted" style="font-size: 13px">游标分页 · 最新在前，下一页向更早翻</span>
+      <TabsContent value="webhooks" class="mt-0">
+        <Card>
+          <CardContent class="flex flex-col gap-3">
             <div>
-              <el-button size="small" :disabled="cursorStack.length === 0" @click="prevPage">上一页</el-button>
-              <el-button size="small" :disabled="!nextCursor" @click="nextPage">下一页</el-button>
+              <Button size="sm" @click="openCreate"><Plus class="size-4" /> 新建订阅</Button>
+            </div>
+            <Skeleton v-if="hooksQuery.isPending.value" class="h-40 w-full" />
+            <div v-else class="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow class="bg-muted/50 hover:bg-muted/50">
+                    <TableHead class="min-w-[240px]">回调地址</TableHead>
+                    <TableHead class="min-w-[180px]">事件类型</TableHead>
+                    <TableHead class="min-w-[120px]">资源过滤</TableHead>
+                    <TableHead class="w-24">投递水位</TableHead>
+                    <TableHead class="w-20">连续失败</TableHead>
+                    <TableHead class="w-20">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow v-for="row in hookRows" :key="row.id">
+                    <TableCell><span class="break-all font-mono text-xs">{{ row.url }}</span></TableCell>
+                    <TableCell>
+                      <div v-if="row.types && row.types.length > 0" class="flex flex-wrap gap-1">
+                        <span
+                          v-for="t in row.types"
+                          :key="t"
+                          class="rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-secondary-foreground"
+                          :title="t"
+                        >{{ eventTypeLabel(t) }}</span>
+                      </div>
+                      <span v-else class="text-muted-foreground">全部事件</span>
+                    </TableCell>
+                    <TableCell>
+                      <span v-if="row.resource_id" class="font-mono text-xs">{{ row.resource_id }}</span>
+                      <span v-else class="text-muted-foreground">—</span>
+                    </TableCell>
+                    <TableCell><span class="font-mono text-xs">{{ row.watermark ?? '—' }}</span></TableCell>
+                    <TableCell>
+                      <span
+                        v-if="(row.fail_count ?? 0) > 0"
+                        class="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive"
+                      >{{ row.fail_count }}</span>
+                      <span v-else class="text-muted-foreground">0</span>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-8 text-destructive hover:text-destructive"
+                        @click.stop="removeHook(row)"
+                      >
+                        删除
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              <EmptyState v-if="hookRows.length === 0" description="还没有订阅">
+                <p class="text-xs text-muted-foreground">
+                  新建订阅后，引擎以 HMAC-SHA256 签名向你的回调地址投递事件。
+                </p>
+              </EmptyState>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
+
+    <Dialog :open="createVisible" @update:open="(v: boolean) => (createVisible = v)">
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>新建 webhook 订阅</DialogTitle>
+          <DialogDescription>引擎以 HMAC-SHA256 签名投递事件。</DialogDescription>
+        </DialogHeader>
+        <form class="grid gap-4" @submit.prevent="submitCreate">
+          <div class="grid gap-1.5">
+            <Label for="hook-url">回调地址</Label>
+            <Input id="hook-url" v-model="form.url" placeholder="https://ops.example.com/mammoth-hook" class="font-mono" />
+          </div>
+          <div class="grid gap-1.5">
+            <Label>事件类型（可选；留空投递全部）</Label>
+            <div class="rounded-lg border p-3">
+              <div class="grid gap-2.5">
+                <div v-for="g in EVENT_TYPE_GROUPS" :key="g.label">
+                  <p class="mb-1.5 text-xs font-medium text-muted-foreground">{{ g.label }}</p>
+                  <div class="flex flex-wrap gap-x-4 gap-y-2">
+                    <label v-for="t in g.types" :key="t.value" class="flex cursor-pointer items-center gap-2 text-sm" :title="t.value">
+                      <Checkbox
+                        :model-value="form.types.includes(t.value)"
+                        @update:model-value="(v: boolean | 'indeterminate') => {
+                          if (v === 'indeterminate') return
+                          form.types = v ? [...form.types, t.value] : form.types.filter((x) => x !== t.value)
+                        }"
+                      />
+                      {{ t.label }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <p class="mt-2.5 text-xs text-muted-foreground">
+                按资源类型分组；投递按精确匹配，清单之外的新类型暂不支持在表单勾选（可后续编辑）。
+              </p>
             </div>
           </div>
-          <el-alert
-            v-if="eventsQuery.error.value"
-            :title="errorMessage(eventsQuery.error.value)"
-            type="error"
-            :closable="false"
-            show-icon
-            class="mt"
-          />
-        </el-tab-pane>
-
-        <el-tab-pane label="Webhooks 订阅" name="webhooks">
-          <div class="tab-toolbar">
-            <el-button type="primary" :icon="Plus" @click="openCreate">新建订阅</el-button>
+          <div class="grid gap-1.5">
+            <Label for="hook-rid">资源 ID 过滤（可选；仅投递该资源的事件）</Label>
+            <Input id="hook-rid" v-model="form.resource_id" placeholder="如 mch_xxxx（跟踪某台机器）或 job_x9k2（跟踪某个作业）" class="font-mono" />
+            <p class="text-xs text-muted-foreground">
+              仅支持单个资源 ID 精确匹配；要跟踪多个资源请为每个资源各建一条订阅，留空则投递全部资源的事件。
+            </p>
           </div>
-          <el-table v-loading="hooksQuery.isFetching.value" :data="hookRows" size="small">
-            <el-table-column label="回调地址" min-width="260">
-              <template #default="{ row }"><span class="mono url">{{ row.url }}</span></template>
-            </el-table-column>
-            <el-table-column label="事件类型" min-width="200">
-              <template #default="{ row }">
-                <template v-if="row.types && row.types.length > 0">
-                  <el-tag
-                    v-for="t in row.types"
-                    :key="t"
-                    size="small"
-                    effect="plain"
-                    class="type-tag"
-                    :title="t"
-                  >{{ eventTypeLabel(t) }}</el-tag>
-                </template>
-                <span v-else class="text-muted">全部事件</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="资源过滤" min-width="120">
-              <template #default="{ row }">
-                <span v-if="row.resource_id" class="mono">{{ row.resource_id }}</span>
-                <span v-else class="text-muted">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="投递水位" width="110">
-              <template #default="{ row }"><span class="mono">{{ row.watermark ?? '—' }}</span></template>
-            </el-table-column>
-            <el-table-column label="连续失败" width="100">
-              <template #default="{ row }">
-                <el-tag v-if="(row.fail_count ?? 0) > 0" type="danger" size="small">{{ row.fail_count }}</el-tag>
-                <span v-else class="text-muted">0</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="90" fixed="right">
-              <template #default="{ row }">
-                <el-button size="small" type="danger" plain @click.stop="removeHook(row)">删除</el-button>
-              </template>
-            </el-table-column>
-            <template #empty>
-              <el-empty :image-size="80" description="还没有订阅">
-                <div class="text-muted" style="font-size: 13px">
-                  新建订阅后，引擎以 HMAC-SHA256 签名向你的回调地址投递事件。
-                </div>
-              </el-empty>
-            </template>
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
+          <DialogFooter>
+            <Button type="button" variant="outline" @click="createVisible = false">取消</Button>
+            <Button type="submit" :disabled="creating">创建</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
 
-    <el-dialog v-model="createVisible" title="新建 webhook 订阅" width="520px">
-      <el-form label-position="top" @submit.prevent="submitCreate">
-        <el-form-item label="回调地址" required>
-          <el-input v-model="form.url" placeholder="https://ops.example.com/mammoth-hook" class="mono" />
-        </el-form-item>
-        <el-form-item label="事件类型（可选；留空投递全部）">
-          <el-select
-            v-model="form.types"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入事件类型"
-            style="width: 100%"
-          >
-            <el-option-group v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :label="g.label">
-              <el-option v-for="t in g.types" :key="t.value" :label="t.label" :value="t.value">
-                <span>{{ t.label }}</span>
-                <span class="mono opt-raw">{{ t.value }}</span>
-              </el-option>
-            </el-option-group>
-          </el-select>
-          <div class="text-muted" style="font-size: 12px; margin-top: 4px">
-            按资源类型分组；支持搜索，也可手动输入清单之外的新类型（投递按精确匹配）。
-          </div>
-        </el-form-item>
-        <el-form-item label="资源 ID 过滤（可选，仅投递该资源的事件）">
-          <el-input v-model="form.resource_id" placeholder="如 mch_xxxx（跟踪某台机器）或 job_x9k2（跟踪某个作业）" class="mono" />
-          <div class="text-muted" style="font-size: 12px; margin-top: 4px">
-            仅支持单个资源 ID 精确匹配；要跟踪多个资源请为每个资源各建一条订阅，留空则投递全部资源的事件。
-          </div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="submitCreate">创建</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog :model-value="createdSecret !== null" title="签名密钥（仅此一次）" width="520px" :close-on-click-modal="false" @update:model-value="(v: boolean) => { if (!v) createdSecret = null }">
-      <el-alert type="warning" :closable="false" show-icon title="HMAC-SHA256 签名密钥不会再次显示，请立即保存。" />
-      <div class="secret mono">{{ createdSecret?.secret }}</div>
-      <div class="text-muted" style="font-size: 12px">{{ createdSecret?.url }}</div>
-      <template #footer>
-        <el-button @click="copySecret">复制</el-button>
-        <el-button type="primary" @click="createdSecret = null">我已保存</el-button>
-      </template>
-    </el-dialog>
+    <Dialog :open="createdSecret !== null" @update:open="(v: boolean) => { if (!v) createdSecret = null }">
+      <DialogContent class="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>签名密钥（仅此一次）</DialogTitle>
+          <DialogDescription>HMAC-SHA256 签名密钥不会再次显示，请立即保存。</DialogDescription>
+        </DialogHeader>
+        <div class="break-all rounded-md bg-muted px-3 py-2.5 font-mono text-sm">{{ createdSecret?.secret }}</div>
+        <p class="text-xs text-muted-foreground">{{ createdSecret?.url }}</p>
+        <DialogFooter>
+          <Button variant="outline" @click="copySecret">复制</Button>
+          <Button @click="createdSecret = null">我已保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
-
-<style scoped>
-.filters {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.payload {
-  margin: 4px 8px;
-  padding: 8px 10px;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  font-size: 12px;
-  max-height: 260px;
-  overflow: auto;
-}
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 12px;
-}
-.mt {
-  margin-top: 10px;
-}
-.tab-toolbar {
-  margin-bottom: 10px;
-}
-.url {
-  font-size: 12px;
-  word-break: break-all;
-}
-.type-tag {
-  margin-right: 4px;
-}
-.type-raw {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-top: 2px;
-}
-.opt-raw {
-  float: right;
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-left: 12px;
-}
-.secret {
-  margin: 12px 0 8px;
-  padding: 10px 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
-  font-size: 13px;
-  word-break: break-all;
-}
-.mono :deep(input) {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
-</style>

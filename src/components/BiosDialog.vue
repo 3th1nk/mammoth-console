@@ -1,14 +1,36 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { LoaderCircle } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { ElMessage, ElNotification } from 'element-plus'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { machineDomain, jobDomain } from '@/api/queryKeys'
 import type { components } from '@/api/types.gen'
 import { uuid } from '@/utils/uuid'
 import { useConnectionStore } from '@/stores/connection'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import EmptyState from '@/components/EmptyState.vue'
 
 /**
  * BIOS 属性两段式修改（契约同构）：读活表 → 修改 → 显式确认（confirm:true）→
@@ -71,11 +93,11 @@ async function submit() {
     attributes[r.name] = parseValue(r.draft)
   }
   if (Object.keys(attributes).length === 0) {
-    ElMessage.warning('没有修改任何属性')
+    toast.warning('没有修改任何属性')
     return
   }
   if (!confirmChecked.value) {
-    ElMessage.warning('请先勾选确认框')
+    toast.warning('请先勾选确认框')
     return
   }
   submitting.value = true
@@ -91,17 +113,16 @@ async function submit() {
     // 异步 job 受理后机器视角与任务列表都会变,即时失效
     void qc.invalidateQueries({ queryKey: machineDomain })
     void qc.invalidateQueries({ queryKey: jobDomain })
-    ElNotification.success({
-      title: 'BIOS 修改已受理',
-      message: jobId ? `任务 ${jobId} 已创建（属性在下次引导时生效）` : '已受理',
-      onClick: () => {
-        if (jobId) router.push({ name: 'job-detail', params: { id: jobId } })
-      },
+    toast.success('BIOS 修改已受理', {
+      description: jobId ? `任务 ${jobId} 已创建（属性在下次引导时生效）` : undefined,
       duration: 6000,
+      action: jobId
+        ? { label: '查看进度', onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
+        : undefined,
     })
     visible.value = false
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     submitting.value = false
   }
@@ -109,79 +130,68 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="修改 BIOS 属性（下次引导生效）" width="680px" destroy-on-close>
-    <el-alert
-      type="warning"
-      :closable="false"
-      show-icon
-      title="属性为 pending 值：提交后由 BMC 在下次引导时应用。引擎执行前会重读活属性表，未知属性名即拒。"
-    />
-    <div class="policy-line">
-      <span>部署 BIOS 确认策略：{{ conn.capabilities?.bios_set_confirm ?? '—' }}</span>
-    </div>
+  <Dialog v-model:open="visible">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
+      <DialogHeader>
+        <DialogTitle>修改 BIOS 属性（下次引导生效）</DialogTitle>
+        <DialogDescription>
+          属性为 pending 值：提交后由 BMC 在下次引导时应用。引擎执行前会重读活属性表，未知属性名即拒。
+          部署 BIOS 确认策略：{{ conn.capabilities?.bios_set_confirm ?? '—' }}
+        </DialogDescription>
+      </DialogHeader>
 
-    <el-table
-      v-loading="biosQuery.isFetching.value"
-      :data="rows"
-      size="small"
-      class="attr-table"
-    >
-      <el-table-column label="属性名" min-width="200">
-        <template #default="{ row }"><span class="mono">{{ row.name }}</span></template>
-      </el-table-column>
-      <el-table-column label="当前值" min-width="140">
-        <template #default="{ row }"><span class="mono">{{ row.current }}</span></template>
-      </el-table-column>
-      <el-table-column label="新值（留空=清空）" min-width="180">
-        <template #default="{ row }">
-          <el-input v-model="row.draft" size="small" class="mono" />
-        </template>
-      </el-table-column>
-      <el-table-column label="恢复" width="70">
-        <template #default="{ row }">
-          <el-button
-            v-if="row.draft !== row.current"
-            size="small"
-            text
-            @click="row.draft = row.current"
-          >
-            还原
-          </el-button>
-        </template>
-      </el-table-column>
-      <template #empty>
-        <el-empty :image-size="60" description="控制器未上报 BIOS 属性表" />
-      </template>
-    </el-table>
+      <Skeleton v-if="biosQuery.isFetching.value" class="h-48 w-full" />
+      <div v-else class="overflow-hidden rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow class="bg-muted/50 hover:bg-muted/50">
+              <TableHead class="min-w-[200px]">属性名</TableHead>
+              <TableHead class="min-w-[140px]">当前值</TableHead>
+              <TableHead class="min-w-[180px]">新值（留空=清空）</TableHead>
+              <TableHead class="w-16">恢复</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="row in rows" :key="row.name">
+              <TableCell><span class="font-mono text-xs">{{ row.name }}</span></TableCell>
+              <TableCell><span class="font-mono text-xs text-muted-foreground">{{ row.current }}</span></TableCell>
+              <TableCell>
+                <Input v-model="row.draft" class="h-8 font-mono text-xs" />
+              </TableCell>
+              <TableCell>
+                <button
+                  v-if="row.draft !== row.current"
+                  class="text-xs text-primary underline-offset-2 hover:underline"
+                  @click="row.draft = row.current"
+                >
+                  还原
+                </button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+        <EmptyState v-if="rows.length === 0" description="控制器未上报 BIOS 属性表" />
+      </div>
 
-    <el-checkbox v-model="confirmChecked" class="confirm-box" :disabled="changedRows.length === 0">
-      我确认提交 {{ changedRows.length }} 项属性修改。
-    </el-checkbox>
-
-    <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button
-        type="primary"
-        :disabled="changedRows.length === 0 || !confirmChecked"
-        :loading="submitting"
-        @click="submit"
+      <label
+        class="flex items-center gap-2 text-sm"
+        :class="changedRows.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
       >
-        提交 {{ changedRows.length }} 项修改
-      </el-button>
-    </template>
-  </el-dialog>
-</template>
+        <Checkbox v-model="confirmChecked" :disabled="changedRows.length === 0" />
+        我确认提交 {{ changedRows.length }} 项属性修改。
+      </label>
 
-<style scoped>
-.policy-line {
-  margin: 10px 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.attr-table {
-  margin: 6px 0 10px;
-}
-.confirm-box {
-  margin-top: 4px;
-}
-</style>
+      <DialogFooter>
+        <Button variant="outline" @click="visible = false">取消</Button>
+        <Button
+          :disabled="changedRows.length === 0 || !confirmChecked"
+          :loading="submitting"
+          @click="submit"
+        >
+          <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+          提交 {{ changedRows.length }} 项修改
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+</template>

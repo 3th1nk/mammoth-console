@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ChevronDown } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import EraseDrivesDialog from './EraseDrivesDialog.vue'
 import BiosDialog from './BiosDialog.vue'
 import RescueDialog from './RescueDialog.vue'
@@ -11,12 +11,34 @@ import { errorMessage, unwrap } from '@/api/problem'
 import type { components } from '@/api/types.gen'
 import { uuid } from '@/utils/uuid'
 import { markActionCommand } from '@/utils/actionNavGuard'
+import { confirm } from '@/composables/confirm'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Input } from '@/components/ui/input'
 
 /**
  * 机器动作入口。
  * flat 模式（表格行内）：高频电源动作平铺为小按钮，其余收进"更多"下拉；
  * 完整模式（详情页头部）：单个下拉承载全部动作。
- * 全部动作 202 + Job，受理后通知给出任务入口；高危两段式（BIOS/擦盘）
+ * 全部动作 202 + Job，受理后 toast 给出任务入口；高危两段式（BIOS/擦盘）
  * 与重装向导后续里程碑提供。
  */
 const props = withDefaults(
@@ -52,17 +74,24 @@ const POWER_CONFIRM: Record<string, string> = {
   eject_media: '弹出该机器挂载的所有虚拟介质？',
 }
 
+function notifyAccepted(title: string, jobId?: string) {
+  toast.success(title, {
+    description: jobId ? `任务 ${jobId} 已创建` : undefined,
+    duration: 6000,
+    action: jobId
+      ? { label: '查看进度', onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
+      : undefined,
+  })
+}
+
 async function submit(action: ActionRequest, confirmText?: string) {
   if (confirmText) {
-    try {
-      await ElMessageBox.confirm(confirmText, `操作 ${props.machineId}`, {
-        type: 'warning',
-        confirmButtonText: '执行',
-        cancelButtonText: '取消',
-      })
-    } catch {
-      return
-    }
+    const ok = await confirm({
+      title: `操作 ${props.machineId}`,
+      description: confirmText,
+      confirmText: '执行',
+    })
+    if (!ok) return
   }
   submitting.value = true
   try {
@@ -74,17 +103,10 @@ async function submit(action: ActionRequest, confirmText?: string) {
       body: action,
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
-    ElNotification.success({
-      title: '已受理',
-      message: jobId ? `任务 ${jobId} 已创建，点击查看进度` : '动作已受理',
-      onClick: () => {
-        if (jobId) router.push({ name: 'job-detail', params: { id: jobId } })
-      },
-      duration: 6000,
-    })
+    notifyAccepted('已受理', jobId)
     emit('submitted')
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     submitting.value = false
   }
@@ -153,16 +175,14 @@ function onCommand(cmd: string) {
 // §6.6):confirm 是唯一门禁,擦盘不可回滚。机器进入 retired 后对
 // 装机/救援/退役一律 422,复投 = 重新盘查。
 async function decommission() {
-  try {
-    await ElMessageBox.confirm(
+  const ok = await confirm({
+    title: `退役 ${props.machineId}`,
+    description:
       '退役将对该机器的每一块盘执行 NIST 800-88 安全擦除(数据不可恢复),采集退役证据后将机器标记为 retired。确定执行?',
-      `退役 ${props.machineId}`,
-      { type: 'error', confirmButtonText: '确认退役(全盘擦除)', cancelButtonText: '取消',
-        confirmButtonClass: 'el-button--danger' },
-    )
-  } catch {
-    return
-  }
+    confirmText: '确认退役(全盘擦除)',
+    destructive: true,
+  })
+  if (!ok) return
   decommissionBusy.value = true
   try {
     const data = await unwrap(await getClient().POST('/api/v1/jobs', {
@@ -174,17 +194,10 @@ async function decommission() {
       } as never,
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
-    ElNotification.success({
-      title: '退役已受理',
-      message: jobId ? `退役任务 ${jobId} 已创建，点击查看进度` : '退役任务已受理',
-      onClick: () => {
-        if (jobId) router.push({ name: 'job-detail', params: { id: jobId } })
-      },
-      duration: 6000,
-    })
+    notifyAccepted('退役已受理', jobId)
     emit('submitted')
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     decommissionBusy.value = false
   }
@@ -194,24 +207,22 @@ async function decommission() {
 // 与「注册」互为反义。列表与详情在 submitted 后各自刷新;详情页刷新后
 // 404 由其自身的错误态呈现。
 async function deregister() {
-  try {
-    await ElMessageBox.confirm(
-      '注销将删除该机器的登记与硬件档案（任务与事件历史保留在作业里）。确定注销？',
-      `注销机器 ${props.machineId}`,
-      { type: 'warning', confirmButtonText: '注销', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+  const ok = await confirm({
+    title: `注销机器 ${props.machineId}`,
+    description: '注销将删除该机器的登记与硬件档案（任务与事件历史保留在作业里）。确定注销？',
+    confirmText: '注销',
+    destructive: true,
+  })
+  if (!ok) return
   submitting.value = true
   try {
     await unwrap(
       await getClient().DELETE('/api/v1/machines/{id}', { params: { path: { id: props.machineId } } }),
     )
-    ElMessage.success('机器已注销')
+    toast.success('机器已注销')
     emit('submitted')
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     submitting.value = false
   }
@@ -231,7 +242,7 @@ function submitBoot() {
 
 function submitMedia() {
   if (!mediaUrl.value.trim()) {
-    ElMessage.warning('请填写镜像 URL（引擎可达，http:// 或 nfs://）')
+    toast.warning('请填写镜像 URL（引擎可达，http:// 或 nfs://）')
     return
   }
   const url = mediaUrl.value.trim()
@@ -242,133 +253,160 @@ function submitMedia() {
 </script>
 
 <template>
-  <span class="actions-wrap" :class="{ row: flat }" @click.stop>
+  <span class="inline-flex items-center" :class="flat ? 'gap-1.5' : ''" @click.stop>
     <!-- flat：行内高频电源 + 更多下拉。headless(protocol=none) 机器无带外,
          引擎 HEADLESS_UNSUPPORTED 门只放行盘查(带内 SSH)/救援——带外动作整组隐藏 -->
     <template v-if="flat">
-      <el-button
+      <Button
         v-if="!headless"
-        size="small"
-        :type="powerState === 'on' ? 'warning' : 'primary'"
-        :plain="powerState === 'on'"
-        :loading="submitting"
+        variant="outline"
+        size="sm"
+        class="h-8"
+        :class="powerState === 'on' ? 'border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400' : ''"
+        :disabled="submitting"
         @click="powerToggle"
       >
         {{ powerState === 'on' ? '关机' : '开机' }}
-      </el-button>
-      <el-dropdown trigger="click" @command="onCommand">
-        <el-button size="small">
-          更多<el-icon v-if="!submitting" class="el-icon--right"><ArrowDown /></el-icon>
-        </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="discover:auto">{{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}</el-dropdown-item>
-            <template v-if="!headless">
-              <el-dropdown-item divided command="power_off">硬关机</el-dropdown-item>
-              <el-dropdown-item command="reboot">软重启</el-dropdown-item>
-              <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
-              <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
-              <el-dropdown-item divided command="boot">设置启动设备</el-dropdown-item>
-              <el-dropdown-item command="media">挂载介质</el-dropdown-item>
-              <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-              <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
-              <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
-              <el-dropdown-item divided command="decommission">退役擦盘</el-dropdown-item>
-            </template>
-            <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
-            <el-dropdown-item command="install">重装系统</el-dropdown-item>
-            <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button variant="outline" size="sm" class="h-8" :disabled="submitting">
+            更多<ChevronDown class="size-3.5 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" class="w-44">
+          <DropdownMenuItem @click="onCommand('discover:auto')">
+            {{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}
+          </DropdownMenuItem>
+          <template v-if="!headless">
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="onCommand('power_off')">硬关机</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('reboot')">软重启</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('hard_reboot')">硬重启</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('cycle')">强制循环上电</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="onCommand('boot')">设置启动设备</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('media')">挂载介质</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('eject_media')">弹出介质</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="onCommand('bios')">BIOS 属性</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('erase')">选盘擦除</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="onCommand('decommission')">退役擦盘</DropdownMenuItem>
+          </template>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem @click="onCommand('rescue')">救援模式</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('install')">重装系统</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem class="text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive" @click="onCommand('deregister')">
+            注销机器
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </template>
 
     <!-- 完整：详情页头部单下拉。headless 同 flat 口径:带外动作整组隐藏 -->
-    <el-dropdown v-else trigger="click" @command="onCommand">
-      <el-button type="primary" plain :loading="submitting">
-        操作<el-icon v-if="!submitting" class="el-icon--right"><ArrowDown /></el-icon>
-      </el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="discover:auto">{{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}</el-dropdown-item>
-          <template v-if="!headless">
-            <el-dropdown-item divided command="power_on">开机</el-dropdown-item>
-            <el-dropdown-item command="soft_off">软关机</el-dropdown-item>
-            <el-dropdown-item command="power_off">硬关机</el-dropdown-item>
-            <el-dropdown-item command="reboot">软重启</el-dropdown-item>
-            <el-dropdown-item command="hard_reboot">硬重启</el-dropdown-item>
-            <el-dropdown-item command="cycle">强制循环上电</el-dropdown-item>
-            <el-dropdown-item divided command="boot">设置启动设备</el-dropdown-item>
-            <el-dropdown-item command="media">挂载介质</el-dropdown-item>
-            <el-dropdown-item command="eject_media">弹出介质</el-dropdown-item>
-            <el-dropdown-item divided command="bios">BIOS 属性</el-dropdown-item>
-            <el-dropdown-item command="erase">选盘擦除</el-dropdown-item>
-            <el-dropdown-item divided command="decommission">退役擦盘</el-dropdown-item>
-          </template>
-          <el-dropdown-item divided command="rescue">救援模式</el-dropdown-item>
-          <el-dropdown-item command="install">重装系统</el-dropdown-item>
-          <el-dropdown-item divided command="deregister" class="deregister-item">注销机器</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
+    <DropdownMenu v-else>
+      <DropdownMenuTrigger as-child>
+        <Button variant="outline" :disabled="submitting">
+          操作<ChevronDown class="size-4 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" class="w-44">
+        <DropdownMenuItem @click="onCommand('discover:auto')">
+          {{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}
+        </DropdownMenuItem>
+        <template v-if="!headless">
+          <DropdownMenuLabel class="text-xs text-muted-foreground">电源</DropdownMenuLabel>
+          <DropdownMenuItem @click="onCommand('power_on')">开机</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('soft_off')">软关机</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('power_off')">硬关机</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('reboot')">软重启</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('hard_reboot')">硬重启</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('cycle')">强制循环上电</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem @click="onCommand('boot')">设置启动设备</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('media')">挂载介质</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('eject_media')">弹出介质</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem @click="onCommand('bios')">BIOS 属性</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('erase')">选盘擦除</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem @click="onCommand('decommission')">退役擦盘</DropdownMenuItem>
+        </template>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem @click="onCommand('rescue')">救援模式</DropdownMenuItem>
+        <DropdownMenuItem @click="onCommand('install')">重装系统</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem class="text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive" @click="onCommand('deregister')">
+          注销机器
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+
+    <Dialog :open="bootDialog" @update:open="(v: boolean) => (bootDialog = v)">
+      <DialogContent class="sm:max-w-[460px]" @click.stop>
+        <DialogHeader>
+          <DialogTitle>设置启动设备</DialogTitle>
+          <DialogDescription>通过 BMC 设置下次引导的设备。</DialogDescription>
+        </DialogHeader>
+        <div class="grid gap-4">
+          <div class="grid gap-1.5">
+            <Label>设备</Label>
+            <RadioGroup
+              v-model="bootDevice"
+              class="grid grid-cols-2 gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-2 [&_[data-slot=radio-group-item]]:text-sm"
+            >
+              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="pxe" /> PXE</Label>
+              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="disk" /> 磁盘</Label>
+              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="cdrom" /> 虚拟介质</Label>
+              <Label class="flex cursor-pointer items-center gap-2 font-normal"><RadioGroupItem value="bios" /> 进 BIOS</Label>
+            </RadioGroup>
+          </div>
+          <div class="flex items-center gap-3">
+            <Switch id="boot-once" v-model:checked="bootOnce" />
+            <Label for="boot-once" class="font-normal text-muted-foreground">
+              一次性：仅下次生效，之后自动回落原启动序
+            </Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="bootDialog = false">取消</Button>
+          <Button @click="submitBoot">提交</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <EraseDrivesDialog v-model="eraseDialog" :machine-id="machineId" />
+    <BiosDialog v-model="biosDialog" :machine-id="machineId" />
+    <RescueDialog v-model="rescueDialog" :machine-id="machineId" />
+
+    <Dialog :open="mediaDialog" @update:open="(v: boolean) => (mediaDialog = v)">
+      <DialogContent class="sm:max-w-[500px]" @click.stop>
+        <DialogHeader>
+          <DialogTitle>挂载虚拟介质</DialogTitle>
+          <DialogDescription>镜像地址需引擎可达。</DialogDescription>
+        </DialogHeader>
+        <div class="grid gap-4">
+          <div class="grid gap-1.5">
+            <Label for="media-url">镜像 URL</Label>
+            <Input
+              id="media-url"
+              v-model="mediaUrl"
+              placeholder="http://…/ubuntu-24.04.iso 或 nfs://…"
+              class="font-mono"
+            />
+          </div>
+          <div class="flex items-center gap-3">
+            <Switch id="eject-after" v-model:checked="ejectAfter" />
+            <Label for="eject-after" class="font-normal">用后弹出</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="mediaDialog = false">取消</Button>
+          <Button @click="submitMedia">挂载</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </span>
-
-  <el-dialog v-model="bootDialog" title="设置启动设备" width="460px" @click.stop>
-    <el-form label-width="90px">
-      <el-form-item label="设备">
-        <el-radio-group v-model="bootDevice">
-          <el-radio-button value="pxe">PXE</el-radio-button>
-          <el-radio-button value="disk">磁盘</el-radio-button>
-          <el-radio-button value="cdrom">虚拟介质</el-radio-button>
-          <el-radio-button value="bios">进 BIOS</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="一次性">
-        <el-switch v-model="bootOnce" />
-        <span class="text-muted" style="margin-left: 8px; font-size: 12px">
-          开启时仅下次生效，之后自动回落原启动序
-        </span>
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="bootDialog = false">取消</el-button>
-      <el-button type="primary" @click="submitBoot">提交</el-button>
-    </template>
-  </el-dialog>
-
-  <EraseDrivesDialog v-model="eraseDialog" :machine-id="machineId" />
-  <BiosDialog v-model="biosDialog" :machine-id="machineId" />
-  <RescueDialog v-model="rescueDialog" :machine-id="machineId" />
-
-  <el-dialog v-model="mediaDialog" title="挂载虚拟介质" width="500px" @click.stop>
-    <el-form label-width="90px">
-      <el-form-item label="镜像 URL">
-        <el-input v-model="mediaUrl" placeholder="http://…/ubuntu-24.04.iso 或 nfs://…" class="mono" />
-      </el-form-item>
-      <el-form-item label="用后弹出">
-        <el-switch v-model="ejectAfter" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="mediaDialog = false">取消</el-button>
-      <el-button type="primary" @click="submitMedia">挂载</el-button>
-    </template>
-  </el-dialog>
 </template>
-
-<style scoped>
-/* inline-flex：v-loading/遮罩类需要可定位容器，行内 span 会塌掉按钮高度 */
-.actions-wrap {
-  display: inline-flex;
-  align-items: center;
-}
-.actions-wrap.row {
-  gap: 6px;
-}
-</style>
-
-<style scoped>
-.deregister-item {
-  color: var(--el-color-danger);
-}
-</style>

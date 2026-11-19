@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/vue-query'
-import { ElMessage } from 'element-plus'
+import { Search } from 'lucide-vue-next'
 import { getClient } from '@/api/client'
 import { unwrap } from '@/api/problem'
 import { subscribeSse, type SseHandle } from '@/api/sse'
@@ -19,13 +19,33 @@ import {
   dashboardDomain,
 } from '@/api/queryKeys'
 import { useConnectionStore } from '@/stores/connection'
-import { useThemeStore } from '@/stores/theme'
 import { copyToClipboard } from '@/utils/clipboard'
-import { formatVersion } from '@/utils/format'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import AppSidebar from '@/components/layout/AppSidebar.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import ConfirmDialogHost from '@/components/ConfirmDialogHost.vue'
 
 const conn = useConnectionStore()
-const theme = useThemeStore()
 const router = useRouter()
 const qc = useQueryClient()
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
@@ -133,191 +153,91 @@ watch(
   { immediate: true },
 )
 
-function copyPassword() {
-  if (pwInfo.value?.password) {
-    void copyToClipboard(pwInfo.value.password).then((ok) =>
-      ok ? ElMessage.success('已复制到剪贴板') : ElMessage.warning('复制失败，请手动选中复制'),
-    )
+async function copyPassword() {
+  if (!pwInfo.value?.password) return
+  const ok = await copyToClipboard(pwInfo.value.password)
+  if (ok) {
+    const { toast } = await import('vue-sonner')
+    toast.success('已复制到剪贴板')
+  } else {
+    const { toast } = await import('vue-sonner')
+    toast.warning('复制失败，请手动选中复制')
   }
 }
 </script>
 
 <template>
-  <el-container class="shell">
-    <el-aside width="200px" class="aside">
-      <div class="brand">
-        <img src="/mammoth.svg" alt="mammoth" />
-        <span>Mammoth Console</span>
-      </div>
-      <div class="engine-version">
-        <el-tag v-if="conn.capabilities" type="success" effect="plain" size="small">
-          引擎 {{ formatVersion(conn.capabilities.version) }}
-        </el-tag>
-        <el-tag v-else type="danger" effect="plain" size="small">未连接</el-tag>
-      </div>
-      <el-menu router :default-active="$route.path" class="menu">
-        <el-menu-item index="/">
-          <el-icon><Odometer /></el-icon>总览
-        </el-menu-item>
-        <el-menu-item index="/machines">
-          <el-icon><Platform /></el-icon>机器
-        </el-menu-item>
-        <el-menu-item index="/pending">
-          <el-icon><Bell /></el-icon>
-          <el-badge :value="pendingCount" :hidden="pendingCount === 0" :max="99">
-            待认领
-          </el-badge>
-        </el-menu-item>
-        <el-menu-item index="/jobs">
-          <el-icon><List /></el-icon>任务
-        </el-menu-item>
-        <el-menu-item index="/events">
-          <el-icon><Document /></el-icon>事件
-        </el-menu-item>
-        <el-menu-item index="/images">
-          <el-icon><Box /></el-icon>镜像库
-        </el-menu-item>
-        <el-menu-item index="/credentials">
-          <el-icon><Key /></el-icon>凭证
-        </el-menu-item>
-        <el-menu-item index="/bios-profiles">
-          <el-icon><Cpu /></el-icon>BIOS 基线
-        </el-menu-item>
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>设置
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
+  <SidebarProvider>
+    <AppSidebar :pending-count="pendingCount" />
 
-    <el-container>
-      <el-header class="topbar" height="52px">
-        <div class="topbar-right">
-          <el-input
-            class="search-entry"
-            readonly
-            placeholder="搜索  ⌘K"
+    <SidebarInset class="overflow-hidden">
+      <header
+        class="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur"
+      >
+        <SidebarTrigger class="-ml-1" />
+        <Separator orientation="vertical" class="mr-1 !h-6" />
+        <div class="ms-auto flex items-center gap-2">
+          <button
+            class="search-entry flex h-8 w-60 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
             @click="palette?.open()"
-          />
-          <el-tooltip :content="theme.dark ? '切到亮色' : '切到暗色'" placement="bottom">
-            <el-button class="theme-toggle" circle text @click="theme.toggle()">
-              <el-icon><Moon v-if="!theme.dark" /><Sunny v-else /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-dropdown trigger="click">
-            <span class="operator">
-              <img src="/avatar.svg" alt="operator" class="avatar" />
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item disabled>管理员（引擎单 token 模式）</el-dropdown-item>
-                <el-dropdown-item divided @click="disconnect">断开连接</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          >
+            <Search class="size-4" />
+            <span>搜索</span>
+            <kbd class="ml-auto rounded border bg-background px-1.5 text-[10px] font-medium">⌘K</kbd>
+          </button>
+          <ThemeToggle />
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <button class="operator cursor-pointer">
+                <img
+                  src="/avatar.svg"
+                  alt="operator"
+                  class="block size-8 rounded-full border-2 border-border bg-muted"
+                />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" class="w-56">
+              <DropdownMenuLabel>管理员（引擎单 token 模式）</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem @click="disconnect">断开连接</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      </el-header>
+      </header>
 
-      <el-alert
+      <Alert
         v-if="conn.unauthorized"
-        title="引擎返回 401：Token 已失效，请在「设置 · 连接」更新"
-        type="error"
-        :closable="false"
-        show-icon
-      />
-      <el-main class="main"><router-view /></el-main>
-    </el-container>
+        variant="destructive"
+        class="mx-4 mt-3 border-x-0 border-t-0 rounded-none"
+      >
+        <AlertTitle>引擎返回 401</AlertTitle>
+        <AlertDescription>Token 已失效，请在「设置 · 连接」更新</AlertDescription>
+      </Alert>
 
-    <el-dialog v-model="pwDialog" title="装机 root 密码（一次性）" width="480px" :close-on-click-modal="false">
-      <el-alert type="warning" :closable="false" show-icon title="该密码不会再次显示，请立即保存。" />
-      <div class="pw-value mono">{{ pwInfo?.password }}</div>
-      <div class="text-muted" style="font-size: 12px">任务 {{ pwInfo?.taskId }}</div>
-      <template #footer>
-        <el-button @click="copyPassword">复制</el-button>
-        <el-button type="primary" @click="pwDialog = false">我已保存</el-button>
-      </template>
-    </el-dialog>
+      <div class="flex-1 overflow-auto"><RouterView /></div>
+    </SidebarInset>
+
+    <Dialog :open="pwDialog" @update:open="(v: boolean) => (pwDialog = v)">
+      <DialogContent class="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>装机 root 密码（一次性）</DialogTitle>
+          <DialogDescription>该密码不会再次显示，请立即保存。</DialogDescription>
+        </DialogHeader>
+        <Alert class="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+          <AlertDescription>该密码不会再次显示，请立即保存。</AlertDescription>
+        </Alert>
+        <div class="break-all rounded-md bg-muted px-3 py-2.5 font-mono text-sm">
+          {{ pwInfo?.password }}
+        </div>
+        <p class="text-xs text-muted-foreground">任务 {{ pwInfo?.taskId }}</p>
+        <DialogFooter>
+          <Button variant="outline" @click="copyPassword">复制</Button>
+          <Button @click="pwDialog = false">我已保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <CommandPalette ref="palette" />
-  </el-container>
+    <ConfirmDialogHost />
+  </SidebarProvider>
 </template>
-
-<style scoped>
-.shell {
-  height: 100%;
-}
-.aside {
-  background: var(--el-bg-color);
-  border-right: 1px solid #e4e7ed;
-  display: flex;
-  flex-direction: column;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-.brand img {
-  width: 26px;
-  height: 26px;
-}
-.menu {
-  border-right: none;
-}
-.engine-version {
-  padding: 0 16px 10px;
-}
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  background: var(--el-bg-color);
-  border-bottom: 1px solid #e4e7ed;
-}
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.search-entry {
-  width: 220px;
-  cursor: pointer;
-}
-.search-entry :deep(.el-input__inner) {
-  cursor: pointer;
-}
-.theme-toggle {
-  height: 32px;
-  width: 32px;
-}
-.theme-toggle :deep(.el-icon) {
-  font-size: 17px;
-}
-.operator {
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid #e4e7ed;
-  background: var(--el-fill-color-light);
-  display: block;
-}
-.main {
-  padding: 0;
-  overflow: auto;
-}
-.pw-value {
-  margin: 12px 0 8px;
-  padding: 10px 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
-  font-size: 14px;
-  word-break: break-all;
-}
-</style>

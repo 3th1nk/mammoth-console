@@ -1,54 +1,23 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Badge } from '@/components/ui/badge'
+import { stateStyle, toneBadgeStyle } from '@/utils/stateColors'
 
 /**
  * 全局状态徽章：machine / job / task 三类状态机的统一呈现
- * （文案与视觉映射见 docs/03-product-design.md §6.1）。
+ * （文案与色彩映射收口到 utils/stateColors.ts）。
  */
 const props = defineProps<{
   state: string
   kind: 'machine' | 'job' | 'task'
 }>()
 
-interface Style {
-  label: string
-  type: 'success' | 'warning' | 'danger' | 'info' | 'primary'
-}
-
-const MAP: Record<string, Record<string, Style>> = {
-  machine: {
-    registering: { label: '注册中', type: 'info' },
-    discovering: { label: '盘查中', type: 'primary' },
-    ready: { label: '就绪', type: 'success' },
-    error: { label: '异常', type: 'danger' },
-    retired: { label: '已退役', type: 'info' },
-  },
-  job: {
-    pending: { label: '排队中', type: 'info' },
-    running: { label: '执行中', type: 'primary' },
-    succeeded: { label: '全部成功', type: 'success' },
-    partial: { label: '部分成功', type: 'warning' },
-    failed: { label: '失败', type: 'danger' },
-    canceled: { label: '已取消', type: 'info' },
-  },
-  task: {
-    pending: { label: '排队中', type: 'info' },
-    running: { label: '执行中', type: 'primary' },
-    succeeded: { label: '成功', type: 'success' },
-    failed: { label: '失败', type: 'danger' },
-    canceled: { label: '已取消', type: 'info' },
-    interrupted: { label: '中断可续跑', type: 'warning' },
-  },
-}
-
-const style = computed<Style>(
-  () =>
-    MAP[props.kind]?.[props.state] ?? { label: props.state, type: 'info' },
-)
+const style = computed(() => stateStyle(props.kind, props.state))
+const badgeStyle = computed(() => toneBadgeStyle(style.value.tone))
 </script>
 
 <template>
-  <el-tag :type="style.type" effect="light" size="small" disable-transitions>
+  <Badge variant="outline" class="rounded-md font-medium" :style="badgeStyle">
     {{ style.label }}
-  </el-tag>
+  </Badge>
 </template>
