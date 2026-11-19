@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { LoaderCircle, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import ComboInput from '@/components/ComboInput.vue'
 import NumberInput from '@/components/NumberInput.vue'
 import SegmentedControl from '@/components/SegmentedControl.vue'
@@ -40,6 +41,7 @@ import { uuid } from '@/utils/uuid'
 type InstallSpec = components['schemas']['InstallSpec']
 type Machine = components['schemas']['Machine']
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()
@@ -175,7 +177,7 @@ watch(chosenImageId, (id) => {
   const family = resolveDistroKey(img.distro, undefined)
   const candidates = distros.value.filter((d) => resolveDistroKey(d.name, d.family) === family)
   if (candidates.length === 0) {
-    autoDistroHint.value = `镜像登记为 ${img.distro}，但引擎没有对应的发行版驱动`
+    autoDistroHint.value = t('wizard.autoDistroNoDriver', { distro: img.distro })
     return
   }
   let picked = candidates[0]!
@@ -187,7 +189,7 @@ watch(chosenImageId, (id) => {
   spec.image.distro = picked.name
   // dd:压缩格式随注册镜像的扩展名预置(.img.xz → raw.xz…),不是默认 raw.gz
   if (picked.name === 'dd') imageFormat.value = formatForSource(img.source_url)
-  autoDistroHint.value = `已按镜像信息自动选择 ${picked.name}（可手动修改）`
+  autoDistroHint.value = t('wizard.autoDistroPicked', { name: picked.name })
 })
 
 // 手动把发行版切到 dd 且库镜像在场：压缩格式同样随镜像预置
@@ -236,13 +238,13 @@ interface DiskRow {
   partitions: PartitionRow[]
 }
 
-const SELECTOR_LABEL: Record<SelectorKind, string> = {
-  largest: '最大盘',
-  smallest: '最小盘',
-  ssd: 'SSD 固态盘',
-  hdd: 'HDD 机械盘',
-  nvme: 'NVMe 盘',
-}
+const SELECTOR_LABEL = computed<Record<SelectorKind, string>>(() => ({
+  largest: t('wizard.selectorLargest'),
+  smallest: t('wizard.selectorSmallest'),
+  ssd: 'SSD',
+  hdd: 'HDD',
+  nvme: 'NVMe',
+}))
 const FS_OPTIONS = ['vfat', 'xfs', 'ext4', 'swap']
 
 const disks = ref<DiskRow[]>([
@@ -270,11 +272,11 @@ function addPartition(d: DiskRow) {
 // 空间（引擎分区切出语义，docs/04 §5.1.1），单盘机器即选它。
 // 保留模式(keep:vg)整组采用既有卷组，只声明挂载意图。
 // debian(partman)无 PV 行（单目标 = 最大盘，buildSpec 自动接线）。
-const PV_SELECTOR_OPTIONS = Object.keys(SELECTOR_LABEL) as SelectorKind[]
-const PV_SELECTOR_LABEL: Record<SelectorKind, string> = {
-  ...SELECTOR_LABEL,
-  largest: '引导盘同盘（剩余空间）',
-}
+const PV_SELECTOR_OPTIONS = Object.keys(SELECTOR_LABEL.value) as SelectorKind[]
+const PV_SELECTOR_LABEL = computed<Record<SelectorKind, string>>(() => ({
+  ...SELECTOR_LABEL.value,
+  largest: t('wizard.pvBootDisk'),
+}))
 interface LvRow { name: string; size: string; fs: string; mount: string }
 interface PreserveRow { name: string; mount: string; fs: string }
 interface VgRow {
@@ -321,7 +323,11 @@ type NetRow = NicRow | BondRow
 // 匹配键与引擎 InterfaceMatch 同源（稳定序 mac > pci_address > name）；
 // 批量共享 spec 时按键取各目标机该键值的交集。
 const MATCH_KEYS: MatchKey[] = ['mac', 'name', 'pci_address']
-const MATCH_KEY_LABEL: Record<MatchKey, string> = { mac: 'MAC', name: '网卡名', pci_address: 'PCI 地址' }
+const MATCH_KEY_LABEL = computed<Record<MatchKey, string>>(() => ({
+  mac: 'MAC',
+  name: t('wizard.matchName'),
+  pci_address: t('wizard.matchPci'),
+}))
 
 // 与引擎白名单（docs/04 §5.2）一致：七种内核模式
 const BOND_MODES = ['active-backup', '802.3ad', 'balance-tlb', 'balance-rr', 'balance-xor', 'broadcast', 'balance-alb']
@@ -355,7 +361,7 @@ const matrixColumns = computed<MatrixCol[]>(() => {
   for (const n of nics.value) {
     if (n.kind === 'nic') {
       if (!n.matchValue.trim()) continue
-      cols.push({ key: n.key, varName: `ip_nic${++nicSeq}`, label: `网卡 · ${shortVal(n.matchValue)}` })
+      cols.push({ key: n.key, varName: `ip_nic${++nicSeq}`, label: `${t('wizard.nic')} · ${shortVal(n.matchValue)}` })
     } else {
       if (n.memberValues.every((m) => !m.trim())) continue
       cols.push({ key: n.key, varName: `ip_bond${++bondSeq}`, label: bondNameOf(n) })
@@ -465,8 +471,8 @@ const nicInventoryHint = computed<string | null>(() => {
   if (netMode.value !== 'static') return null
   if (MATCH_KEYS.some((k) => nicOptionsByKey.value[k].length > 0)) return null
   return anyTargetNics.value
-    ? '多台目标机的网卡清单没有共同匹配项（MAC/网卡名/PCI 地址交集全空），请手动填写或按机型分批提交。'
-    : '目标机的盘查数据暂无网卡清单（未完成盘查或清单为空），匹配值需手动填写；清单来自注册时的自动盘查，可在机器详情页核对。'
+    ? t('wizard.nicHintNoCommon')
+    : t('wizard.nicHintNoInventory')
 })
 
 function speedLabel(mbps: number): string {
@@ -484,7 +490,7 @@ function nicOptionDetail(key: MatchKey, o: NicOption): string {
 }
 
 function matchPlaceholder(key: MatchKey): string {
-  return key === 'mac' ? '选择网卡或手填 MAC' : key === 'name' ? '选择网卡或手填网卡名' : '选择网卡或手填 PCI 地址'
+  return key === 'mac' ? t('wizard.matchPlaceholderMac') : key === 'name' ? t('wizard.matchPlaceholderName') : t('wizard.matchPlaceholderPci')
 }
 
 function matchByKey(key: MatchKey, value: string): components['schemas']['InterfaceMatch'] {
@@ -1043,7 +1049,7 @@ async function submit() {
       },
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
-    toast.success(`装机任务 ${jobId} 已受理`)
+    toast.success(t('wizard.submitted', { id: jobId }))
     void queryClient.invalidateQueries({ queryKey: jobDomain })
     router.push({ name: 'job-detail', params: { id: jobId } })
   } catch (e) {
@@ -1179,13 +1185,17 @@ function lvmError(): string | null {
   return null
 }
 
-const KEEP_LABEL: Record<string, string> = { full: '完整支持', partial: '部分支持', none: '不支持' }
+const KEEP_LABEL = computed<Record<string, string>>(() => ({
+  full: t('wizard.keepAll'),
+  partial: t('settings.pxePartial'),
+  none: t('wizard.keepNone'),
+}))
 
-const HEALTH_GATE_DESC: Record<string, string> = {
-  off: '不检查，直接装机',
-  report: '坏盘写入试算警告，不拦截',
-  block: '提交前拦截：最近盘查中有 fail 盘的机器将被 422 拒绝并点名 serial',
-}
+const HEALTH_GATE_DESC = computed<Record<string, string>>(() => ({
+  off: t('wizard.gateOffDesc'),
+  report: t('wizard.gateReportDesc'),
+  block: t('wizard.gateBlockDesc'),
+}))
 
 </script>
 
@@ -1193,8 +1203,8 @@ const HEALTH_GATE_DESC: Record<string, string> = {
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">装机向导</h2>
-        <p class="text-sm text-muted-foreground">目标机器 → 安装意图 → 试算预览 → 执行策略</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('wizard.title') }}</h2>
+        <p class="text-sm text-muted-foreground">{{ t('wizard.subtitle') }}</p>
       </div>
     </div>
 
@@ -1202,8 +1212,8 @@ const HEALTH_GATE_DESC: Record<string, string> = {
       <CardContent class="py-6">
         <ol class="flex w-full items-start">
           <li
-            v-for="(t, i) in ['目标机器', '安装意图', '试算预览', '执行策略']"
-            :key="t"
+            v-for="(st, i) in [t('wizard.stepTargets'), t('wizard.stepIntent'), t('wizard.stepPlan'), t('wizard.stepPolicy')]"
+            :key="st"
             class="relative flex min-w-0 flex-1 flex-col items-center gap-1.5"
           >
             <div
@@ -1225,7 +1235,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               class="text-xs font-medium"
               :class="i + 1 === step ? 'text-foreground' : 'text-muted-foreground'"
             >
-              {{ t }}
+              {{ st }}
             </div>
           </li>
         </ol>
@@ -1243,10 +1253,10 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           <Table>
             <TableHeader>
               <TableRow class="bg-muted/50 hover:bg-muted/50">
-                <TableHead class="min-w-[160px]">机器</TableHead>
-                <TableHead class="w-24">状态</TableHead>
-                <TableHead class="min-w-[140px]">BMC 地址</TableHead>
-                <TableHead class="min-w-[240px]">占用检查</TableHead>
+                <TableHead class="min-w-[160px]">{{ t('wizard.colMachine') }}</TableHead>
+                <TableHead class="w-24">{{ t('wizard.colState') }}</TableHead>
+                <TableHead class="min-w-[140px]">{{ t('wizard.colBmc') }}</TableHead>
+                <TableHead class="min-w-[240px]">{{ t('wizard.colBusy') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1257,12 +1267,12 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 <TableCell>
                   <template v-if="row.busy">
                     <Badge variant="outline" class="rounded-md font-medium" :style="{ color: '#f59e0b', borderColor: '#f59e0b55', backgroundColor: '#f59e0b1a' }">
-                      有进行中的装机任务
+                      {{ t('wizard.busy') }}
                     </Badge>
                     <span class="ml-2 font-mono text-xs text-muted-foreground">{{ row.busyTaskId }}</span>
                   </template>
                   <Badge v-else variant="outline" class="rounded-md font-medium" :style="{ color: '#10b981', borderColor: '#10b98155', backgroundColor: '#10b9811a' }">
-                    空闲
+                    {{ t('wizard.idle') }}
                   </Badge>
                 </TableCell>
               </TableRow>
@@ -1270,9 +1280,9 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </Table>
         </div>
         <div class="flex items-center justify-between">
-          <span class="text-sm text-muted-foreground">空闲 {{ readyTargets.length }} / {{ targetRows.length }} 台可装机</span>
+          <span class="text-sm text-muted-foreground">{{ t('wizard.idleRatio', { free: readyTargets.length, total: targetRows.length }) }}</span>
           <Button size="sm" :disabled="readyTargets.length === 0" @click="step = 2">
-            下一步：安装意图
+            {{ t('wizard.nextIntent') }}
           </Button>
         </div>
       </CardContent>
@@ -1282,23 +1292,22 @@ const HEALTH_GATE_DESC: Record<string, string> = {
     <Card v-else-if="step === 2">
       <CardContent class="flex flex-col gap-6">
         <div class="grid gap-1.5">
-          <Label>镜像</Label>
+          <Label>{{ t('wizard.image') }}</Label>
           <SegmentedControl
             v-model="imageMode"
             :options="[
-              { value: 'library', label: '从镜像库选择（推荐）' },
-              { value: 'inline', label: '直接填写镜像地址' },
+              { value: 'library', label: t('wizard.imageLibrary') },
+              { value: 'inline', label: t('wizard.imageInline') },
             ]"
           />
           <p v-if="isDD" class="text-xs leading-relaxed text-muted-foreground">
-            镜像直写：整盘镜像（自带分区表/引导器）由 agent 运行时流式写入目标盘，
-            写盘流按未压缩镜像逐字节 SHA256 校验；首启意图（主机名/网络/凭证）随 NoCloud seed 生效。
-            {{ imageMode === 'library' ? '库镜像由引擎面向机器拉流，校验和与压缩格式按注册件自动携带。' : '' }}
+            {{ t('wizard.ddHint') }}
+            {{ imageMode === 'library' ? t('wizard.ddHintLib') : '' }}
           </p>
           <div v-if="imageMode === 'library'" class="grid gap-1.5">
             <Select v-model="chosenImageId">
               <SelectTrigger class="w-[420px]">
-                <SelectValue placeholder="选择就绪的库镜像" />
+                <SelectValue :placeholder="t('wizard.selectReadyImage')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="i in readyImages" :key="i.id" :value="i.id">
@@ -1307,17 +1316,17 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               </SelectContent>
             </Select>
             <p class="text-xs text-muted-foreground">
-              没有合适的？先到「镜像库」注册（引擎按 SHA256 门禁后台拉取）。
-              <RouterLink to="/images" target="_blank" class="text-primary underline-offset-2 hover:underline">打开镜像库</RouterLink>
+              {{ t('wizard.noFit') }}
+              <RouterLink to="/images" target="_blank" class="text-primary underline-offset-2 hover:underline">{{ t('wizard.openImages') }}</RouterLink>
             </p>
             <p v-if="readyImages.length === 0" class="text-xs text-amber-600 dark:text-amber-400">
-              镜像库中没有就绪的镜像。
+              {{ t('wizard.noReadyImages') }}
             </p>
           </div>
           <div v-else class="grid gap-1.5">
             <Input
               v-model="spec.image.source"
-              :placeholder="isDD ? 'https://images.example.com/thor.img.gz（机器直连可达的整盘镜像）' : 'https://mirror.example.com/rocky9.iso（引擎可达；粘贴后自动识别发行版）'"
+              :placeholder="isDD ? t('wizard.inlineSourcePlaceholderDD') : t('wizard.inlineSourcePlaceholder')"
               class="font-mono"
             />
             <Input
@@ -1342,70 +1351,66 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         </div>
 
         <div class="grid gap-1.5">
-          <Label>发行版</Label>
+          <Label>{{ t('wizard.distro') }}</Label>
           <Select v-model="distroChoice">
             <SelectTrigger class="w-[320px]">
-              <SelectValue placeholder="选择发行版" />
+              <SelectValue :placeholder="t('wizard.distroPlaceholder')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem v-for="d in orderedDistros" :key="d.name" :value="d.name">
                 <span class="inline-flex items-center gap-2">
                   <DistroBadge :name="d.name" :family="d.family" />
-                  {{ d.name === 'dd' ? '镜像直写（dd）' : d.name }}
-                  <span class="text-xs text-muted-foreground">{{ d.name === 'dd' ? '整盘镜像 → 目标盘' : d.family }}</span>
+                  {{ d.name === 'dd' ? t('wizard.distroDD') : d.name }}
+                  <span class="text-xs text-muted-foreground">{{ d.name === 'dd' ? t('wizard.distroDDTag') : d.family }}</span>
                 </span>
               </SelectItem>
             </SelectContent>
           </Select>
           <p v-if="autoDistroHint" class="text-xs text-emerald-600 dark:text-emerald-400">{{ autoDistroHint }}</p>
           <p v-if="distroChoice" class="text-xs leading-relaxed text-muted-foreground">
-            {{ distroChoice === 'dd' ? '镜像直写通路 · 整盘镜像流式写盘 + NoCloud seed 首启 · 虚拟介质 / PXE 双载体' : distros.find((d) => d.name === distroChoice)?.family + ' 方言 · 保留分区 ' + (KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—') }}
+            {{ distroChoice === 'dd' ? t('wizard.ddPathHint') : t('wizard.dialectHint', { family: distros.find((d) => d.name === distroChoice)?.family, keep: KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—' }) }}
           </p>
         </div>
 
         <div class="grid gap-1.5">
-          <Label>存储</Label>
+          <Label>{{ t('wizard.storage') }}</Label>
           <p v-if="isDD" class="text-xs leading-relaxed text-muted-foreground">
-            单目标盘（最大盘）整盘写入——镜像自带分区表与引导器，引擎不再声明分区；
-            LVM/自定义分区不适用于本通路。
+            {{ t('wizard.storageDD') }}
           </p>
           <SegmentedControl
             v-else
             v-model="storageMode"
             :disabled="isWindows"
             :options="[
-              { value: 'standard', label: isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' },
-              ...(isWindows ? [] : [{ value: 'custom', label: '自定义分区' }, { value: 'lvm', label: 'LVM 卷组' }]),
+              { value: 'standard', label: isWindows ? t('wizard.storageStandardWin') : t('wizard.storageStandard') },
+              ...(isWindows ? [] : [{ value: 'custom', label: t('wizard.storageCustom') }, { value: 'lvm', label: t('wizard.storageLvm') }]),
             ]"
           />
           <p v-if="storageMode === 'standard' && !isWindows" class="text-xs leading-relaxed text-muted-foreground">
-            标准分区 = 最大盘全盘擦除：512M EFI + 4G swap + 其余 xfs 挂 /。
+            {{ t('wizard.storageStandardHint') }}
           </p>
           <p v-else-if="isWindows" class="text-xs leading-relaxed text-muted-foreground">
-            windows 方言：单盘 NTFS 布局由引擎固定生成（多盘/软件 RAID/硬件 RAID 卷均不支持）。
+            {{ t('wizard.storageWinHint') }}
           </p>
           <div v-else-if="storageMode === 'lvm'" class="grid gap-2">
             <Alert class="border-blue-500/30 bg-blue-500/5">
               <AlertDescription class="text-xs leading-relaxed">
-                本档固定声明系统盘（最大盘）引导分区：kickstart 族 ESP + /boot，ubuntu/debian 仅
-                ESP；根分区 / 建在卷组逻辑卷上。PV 默认整盘消费（隐式擦除）；单盘机器选「引导盘同盘」=
-                PV 占系统盘剩余空间。批量装机按每台机器各自解析。
+                {{ t('wizard.lvmInfo') }}
               </AlertDescription>
             </Alert>
             <Alert v-if="isDebian" class="border-amber-500/40 bg-amber-500/5">
               <AlertDescription class="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-                Debian（partman）限制：仅一个卷组、PV 即安装目标盘（最大盘，自动接线）、逻辑卷 fs 限
-                ext4/vfat/swap、不支持保留既有卷组。
+                {{ t('wizard.debianLvmWarn') }}
               </AlertDescription>
             </Alert>
             <div v-for="(g, gi) in vgs" :key="gi" class="rounded-lg border p-3">
               <div class="mb-2.5 flex items-center justify-between gap-2">
-                <Input v-model="g.name" placeholder="卷组名，如 vg0" class="w-[170px] font-mono" />
+                <Input v-model="g.name" :placeholder="t('wizard.vgNamePlaceholder')" class="w-[170px] font-mono" />
                 <SegmentedControl
                   v-model="g.mode"
                   :options="[
-                    { value: 'fresh', label: '新建' },
-                    { value: 'keep', label: '保留现有（重装不格式化）' },
+                    { value: 'fresh', label: t('wizard.vgFresh') },
+                    { value: 'keep', label: t('wizard.vgKeep') },
                   ]"
                 />
                 <Button variant="ghost" size="icon" class="size-8 shrink-0 text-destructive hover:text-destructive" @click="vgs.splice(gi, 1)">
@@ -1414,11 +1419,9 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               </div>
               <template v-if="g.mode === 'fresh'">
                 <div v-if="!isDebian" class="grid gap-1.5">
-                  <p class="text-xs text-muted-foreground">
-                    物理卷（PV）：整盘消费，与磁盘声明互斥；「引导盘同盘」= 单盘布局（PV 占系统盘剩余空间）
-                  </p>
+                  <p class="text-xs text-muted-foreground">{{ t('wizard.pvHint') }}</p>
                   <div v-for="(p, pi) in g.pvs" :key="pi" class="flex items-center gap-1.5">
-                    <Badge variant="outline" class="shrink-0 text-[11px] font-medium">PV</Badge>
+                    <Badge variant="outline" class="shrink-0 text-[11px] font-medium">{{ t('wizard.pv') }}</Badge>
                     <Select v-model="p.selector">
                       <SelectTrigger class="w-[210px]"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -1435,24 +1438,22 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       <Trash2 class="size-4" />
                     </Button>
                   </div>
-                  <Button variant="outline" size="sm" class="w-fit" @click="addPv(g)">+ 添加 PV</Button>
+                  <Button variant="outline" size="sm" class="w-fit" @click="addPv(g)">{{ t('wizard.addPv') }}</Button>
                 </div>
-                <p v-else class="text-xs text-muted-foreground">PV 即安装目标盘（最大盘），由 partman 单目标限制自动接线。</p>
+                <p v-else class="text-xs text-muted-foreground">{{ t('wizard.pvDebianHint') }}</p>
                 <div class="mt-2.5 grid gap-1.5">
-                  <p class="text-xs text-muted-foreground">
-                    逻辑卷（LV）：rest = 占满卷组剩余（至多一个）；swap 卷挂载点填 swap
-                  </p>
+                  <p class="text-xs text-muted-foreground">{{ t('wizard.lvHint') }}</p>
                   <div v-for="(l, li) in g.logvols" :key="li" class="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="outline" class="shrink-0 text-[11px] font-medium">LV</Badge>
-                    <Input v-model="l.name" placeholder="LV 名，如 root" class="w-[140px] font-mono" />
-                    <Input v-model="l.size" placeholder="大小（100G / rest）" class="w-[150px] font-mono" />
+                    <Badge variant="outline" class="shrink-0 text-[11px] font-medium">{{ t('wizard.lv') }}</Badge>
+                    <Input v-model="l.name" :placeholder="t('wizard.lvNamePlaceholder')" class="w-[140px] font-mono" />
+                    <Input v-model="l.size" :placeholder="t('wizard.lvSizePlaceholder')" class="w-[150px] font-mono" />
                     <Select v-model="l.fs">
                       <SelectTrigger class="w-[100px]"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem v-for="f in FS_OPTIONS" :key="f" :value="f">{{ f }}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Input v-model="l.mount" placeholder="挂载点，如 /" class="w-[170px] font-mono" />
+                    <Input v-model="l.mount" :placeholder="t('wizard.mountPlaceholder')" class="w-[170px] font-mono" />
                     <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="g.logvols.splice(li, 1)">
                       <Trash2 class="size-4" />
                     </Button>
@@ -1461,16 +1462,14 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 </div>
               </template>
               <template v-else>
-                <p class="mb-1.5 text-xs text-muted-foreground">
-                  整组原样保留（不格式化）；下方只声明要自动挂回的既有 LV，未列出的装后可手动挂载。
-                </p>
+                <p class="mb-1.5 text-xs text-muted-foreground">{{ t('wizard.keepHint') }}</p>
                 <div v-for="(p, pi) in g.preserve" :key="pi" class="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" class="shrink-0 text-[11px] font-medium">挂载</Badge>
-                  <Input v-model="p.name" placeholder="既有 LV 名，如 lvdata" class="w-[160px] font-mono" />
-                  <Input v-model="p.mount" placeholder="挂载点，如 /data" class="w-[180px] font-mono" />
+                  <Badge variant="outline" class="shrink-0 text-[11px] font-medium">{{ t('wizard.keepMount') }}</Badge>
+                  <Input v-model="p.name" :placeholder="t('wizard.keepNamePlaceholder')" class="w-[160px] font-mono" />
+                  <Input v-model="p.mount" :placeholder="t('wizard.keepMountPlaceholder')" class="w-[180px] font-mono" />
                   <Select :model-value="p.fs || undefined" @update:model-value="(v: unknown) => (p.fs = v == null ? '' : String(v))">
                     <SelectTrigger class="w-[130px]">
-                      <SelectValue placeholder="跟随快照" />
+                      <SelectValue :placeholder="t('wizard.keepFsPlaceholder')" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem v-for="f in FS_OPTIONS" :key="f" :value="f">{{ f }}</SelectItem>
@@ -1480,10 +1479,10 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                     <Trash2 class="size-4" />
                   </Button>
                 </div>
-                <Button variant="outline" size="sm" class="mt-1.5 w-fit" @click="addPreserve(g)">+ 添加挂载</Button>
+                <Button variant="outline" size="sm" class="mt-1.5 w-fit" @click="addPreserve(g)">{{ t('wizard.addMount') }}</Button>
               </template>
             </div>
-            <Button variant="outline" size="sm" class="w-fit" @click="addVg">+ 添加卷组</Button>
+            <Button variant="outline" size="sm" class="w-fit" @click="addVg">{{ t('wizard.addVg') }}</Button>
           </div>
           <div v-else class="grid gap-2">
             <div v-for="(d, di) in disks" :key="di" class="rounded-lg border p-3">
@@ -1497,8 +1496,8 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 <SegmentedControl
                   v-model="d.action"
                   :options="[
-                    { value: 'wipe', label: '擦除并重装分区' },
-                    { value: 'keep_disk', label: '保留整盘' },
+                    { value: 'wipe', label: t('wizard.diskWipe') },
+                    { value: 'keep_disk', label: t('wizard.diskKeep') },
                   ]"
                 />
                 <Button
@@ -1511,33 +1510,33 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               </div>
               <div v-if="d.action === 'wipe'" class="grid gap-1.5">
                 <div v-for="(p, pi) in d.partitions" :key="pi" class="flex flex-wrap items-center gap-1.5">
-                  <Input v-model="p.size" placeholder="大小（512M / rest）" class="w-[150px] font-mono" />
+                  <Input v-model="p.size" :placeholder="t('wizard.partSizePlaceholder')" class="w-[150px] font-mono" />
                   <Select v-model="p.fs">
                     <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem v-for="f in FS_OPTIONS" :key="f" :value="f">{{ f }}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input v-model="p.mount" placeholder="挂载点，如 /" class="w-[180px] font-mono" />
+                  <Input v-model="p.mount" :placeholder="t('wizard.mountPlaceholder')" class="w-[180px] font-mono" />
                   <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="d.partitions.splice(pi, 1)">
                     <Trash2 class="size-4" />
                   </Button>
                 </div>
-                <Button variant="outline" size="sm" class="w-fit" @click="addPartition(d)">+ 添加分区</Button>
+                <Button variant="outline" size="sm" class="w-fit" @click="addPartition(d)">{{ t('wizard.addPartition') }}</Button>
               </div>
-              <p v-else class="text-xs text-muted-foreground">保留整盘：不触碰该盘上的任何数据。</p>
+              <p v-else class="text-xs text-muted-foreground">{{ t('wizard.keepDiskHint') }}</p>
             </div>
-            <Button variant="outline" size="sm" class="w-fit" @click="addDisk">+ 添加磁盘</Button>
+            <Button variant="outline" size="sm" class="w-fit" @click="addDisk">{{ t('wizard.addDisk') }}</Button>
           </div>
         </div>
 
         <div class="grid gap-1.5">
-          <Label>网络</Label>
+          <Label>{{ t('wizard.network') }}</Label>
           <SegmentedControl
             v-model="netMode"
             :options="[
-              { value: 'auto', label: '自动（装机环境 DHCP）' },
-              { value: 'static', label: '静态配置' },
+              { value: 'auto', label: t('wizard.netAuto') },
+              { value: 'static', label: t('wizard.netStatic') },
             ]"
           />
           <div v-if="netMode === 'static'" class="grid gap-2 pt-1">
@@ -1545,7 +1544,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               <!-- 普通网卡 -->
               <template v-if="n.kind === 'nic'">
                 <div class="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" class="shrink-0 text-[11px] font-medium">网卡</Badge>
+                  <Badge variant="outline" class="shrink-0 text-[11px] font-medium">{{ t('wizard.nic') }}</Badge>
                   <Select v-model="n.matchKey" :disabled="isWindows" @update:model-value="() => onMatchKeyChange(n)">
                     <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1558,10 +1557,10 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                     :placeholder="matchPlaceholder(n.matchKey)"
                     input-class="w-[260px]"
                   />
-                  <Input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式，如 198.51.100.5/24" class="w-[180px] font-mono" />
-                  <span v-else class="shrink-0 text-xs text-muted-foreground">IP 逐台 ↓</span>
-                  <Input v-model="n.gateway" placeholder="网关（可选）" class="w-[160px] font-mono" />
-                  <Input v-model="n.dns" placeholder="DNS，逗号分隔（可选）" class="w-[180px] font-mono" />
+                  <Input v-if="!isBatchStatic" v-model="n.ip" :placeholder="t('wizard.nicIpPlaceholder')" class="w-[180px] font-mono" />
+                  <span v-else class="shrink-0 text-xs text-muted-foreground">{{ t('wizard.nicIpPerTarget') }}</span>
+                  <Input v-model="n.gateway" :placeholder="t('wizard.gatewayPlaceholder')" class="w-[160px] font-mono" />
+                  <Input v-model="n.dns" :placeholder="t('wizard.dnsPlaceholder')" class="w-[180px] font-mono" />
                   <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="nics.splice(i, 1)">
                     <Trash2 class="size-4" />
                   </Button>
@@ -1578,7 +1577,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       <TooltipTrigger as-child>
                         <Input :model-value="bondNameOf(n)" disabled class="w-[110px] font-mono" />
                       </TooltipTrigger>
-                      <TooltipContent>bond 名称由引擎按声明顺序分配（bond0、bond1…），VLAN 挂载时引用该名称</TooltipContent>
+                      <TooltipContent>{{ t('wizard.bondNameTip') }}</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                   <Select v-model="n.mode">
@@ -1587,23 +1586,23 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       <SelectItem v-for="m in BOND_MODES" :key="m" :value="m">{{ m }}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式（可选）" class="w-[180px] font-mono" />
-                  <span v-else class="shrink-0 text-xs text-muted-foreground">IP 逐台 ↓</span>
-                  <Input v-model="n.gateway" placeholder="网关（可选）" class="w-[150px] font-mono" />
+                  <Input v-if="!isBatchStatic" v-model="n.ip" :placeholder="t('wizard.bondIpPlaceholder')" class="w-[180px] font-mono" />
+                  <span v-else class="shrink-0 text-xs text-muted-foreground">{{ t('wizard.nicIpPerTarget') }}</span>
+                  <Input v-model="n.gateway" :placeholder="t('wizard.gatewayPlaceholder')" class="w-[150px] font-mono" />
                   <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="nics.splice(i, 1)">
                     <Trash2 class="size-4" />
                   </Button>
                 </div>
                 <div class="mt-2 flex flex-wrap items-center gap-1.5 pl-3.5">
                   <div class="flex w-full flex-wrap items-center gap-1.5">
-                    <span class="text-xs text-muted-foreground">成员匹配方式</span>
+                    <span class="text-xs text-muted-foreground">{{ t('wizard.memberKey') }}</span>
                     <Select v-model="n.memberKey" :disabled="isWindows" @update:model-value="() => onMemberKeyChange(n)">
                       <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem v-for="k in MATCH_KEYS" :key="k" :value="k">{{ MATCH_KEY_LABEL[k] }}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <span class="text-xs text-muted-foreground">按 miimon 链路监测；高级参数也接受 cloud-init v2 拼写（如 {"mii-monitor-interval":100}），未知键会被引擎渲染期拒绝</span>
+                    <span class="text-xs text-muted-foreground">{{ t('wizard.memberKeyHint') }}</span>
                   </div>
                   <div v-for="(_m, mi) in n.memberValues" :key="mi" class="flex w-full flex-wrap items-center gap-1.5">
                     <ComboInput
@@ -1617,50 +1616,48 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       <Trash2 class="size-4" />
                     </Button>
                   </div>
-                  <Button variant="outline" size="sm" class="w-fit" @click="n.memberValues.push('')">+ 成员</Button>
-                  <Input v-model="n.miimon" placeholder="miimon(ms)" class="w-[130px] font-mono" />
-                  <Input v-model="n.paramsRaw" placeholder='高级参数 JSON，如 {"lacp_rate":"fast"}' class="w-[320px] font-mono" />
+                  <Button variant="outline" size="sm" class="w-fit" @click="n.memberValues.push('')">{{ t('wizard.addMember') }}</Button>
+                  <Input v-model="n.miimon" :placeholder="t('wizard.miimonPlaceholder')" class="w-[130px] font-mono" />
+                  <Input v-model="n.paramsRaw" :placeholder="t('wizard.paramsPlaceholder')" class="w-[320px] font-mono" />
                 </div>
               </template>
             </div>
             <div class="flex gap-1.5">
-              <Button variant="outline" size="sm" class="w-fit" @click="addNic">+ 添加网卡</Button>
-              <Button variant="outline" size="sm" class="w-fit" :disabled="!bondSupported || isWindows" @click="addBond">+ 添加 bond</Button>
-              <Button variant="outline" size="sm" class="w-fit" :disabled="!bondSupported || isWindows" @click="addVlan">+ 添加 VLAN</Button>
+              <Button variant="outline" size="sm" class="w-fit" @click="addNic">{{ t('wizard.addNic') }}</Button>
+              <Button variant="outline" size="sm" class="w-fit" :disabled="!bondSupported || isWindows" @click="addBond">{{ t('wizard.addBond') }}</Button>
+              <Button variant="outline" size="sm" class="w-fit" :disabled="!bondSupported || isWindows" @click="addVlan">{{ t('wizard.addVlan') }}</Button>
             </div>
             <p v-if="nicInventoryHint" class="text-xs text-amber-600 dark:text-amber-400">{{ nicInventoryHint }}</p>
             <p v-if="!bondSupported" class="text-xs text-amber-600 dark:text-amber-400">
-              Debian 方言不支持 bond/VLAN（引擎渲染即拒）；如需 bond 请改用 Rocky/Ubuntu 系列。
+              {{ t('wizard.bondUnsupportedDebian') }}
             </p>
             <p v-else-if="isWindows" class="text-xs text-amber-600 dark:text-amber-400">
-              Windows 方言不支持 bond/VLAN；静态网络仅支持单网卡（MAC 绑定）。
+              {{ t('wizard.bondUnsupportedWin') }}
             </p>
             <template v-if="vlans.length > 0">
-              <p class="pt-1 text-xs text-muted-foreground">VLAN 子接口：</p>
+              <p class="pt-1 text-xs text-muted-foreground">{{ t('wizard.vlanSubs') }}</p>
               <div v-for="(v, i) in vlans" :key="'v' + i" class="flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline" class="shrink-0 rounded-md text-[11px] font-medium" :style="{ color: '#f59e0b', borderColor: '#f59e0b55', backgroundColor: '#f59e0b1a' }">
-                  VLAN
+                  {{ t('wizard.vlan') }}
                 </Badge>
-                <Input v-model="v.id" placeholder="VLAN ID" class="w-[110px] font-mono" />
-                <Input v-model="v.link" placeholder="挂在哪个接口（bond0）" class="w-[200px] font-mono" />
-                <Input v-if="!isBatchStatic" v-model="v.ip" placeholder="CIDR 格式" class="w-[180px] font-mono" />
-                <span v-else class="shrink-0 text-xs text-muted-foreground">IP 逐台 ↓</span>
+                <Input v-model="v.id" :placeholder="t('wizard.vlanIdPlaceholder')" class="w-[110px] font-mono" />
+                <Input v-model="v.link" :placeholder="t('wizard.vlanLinkPlaceholder')" class="w-[200px] font-mono" />
+                <Input v-if="!isBatchStatic" v-model="v.ip" :placeholder="t('wizard.vlanIpPlaceholder')" class="w-[180px] font-mono" />
+                <span v-else class="shrink-0 text-xs text-muted-foreground">{{ t('wizard.nicIpPerTarget') }}</span>
                 <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="vlans.splice(i, 1)">
                   <Trash2 class="size-4" />
                 </Button>
               </div>
             </template>
             <template v-if="isBatchStatic">
-              <p class="pt-1 text-xs text-muted-foreground">
-                逐台地址分配（每台每个接口一格，引擎按台解析；上方行的网关/DNS 批量共享）：
-              </p>
+              <p class="pt-1 text-xs text-muted-foreground">{{ t('wizard.matrixHint') }}</p>
               <div class="overflow-x-auto rounded-lg border">
                 <Table class="min-w-[640px]">
                   <TableHeader>
                     <TableRow class="bg-muted/50 hover:bg-muted/50">
-                      <TableHead class="min-w-[150px]">机器</TableHead>
+                      <TableHead class="min-w-[150px]">{{ t('wizard.colMachine') }}</TableHead>
                       <TableHead v-for="col in matrixColumns" :key="col.key" class="min-w-[170px]">{{ col.label }}</TableHead>
-                      <TableHead class="min-w-[150px]">主机名（可选）</TableHead>
+                      <TableHead class="min-w-[150px]">{{ t('wizard.colHostname') }}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1672,7 +1669,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       <TableCell v-for="col in matrixColumns" :key="col.key">
                         <Input
                           :model-value="matrixCell(row.machine.id, col.key)"
-                          placeholder="CIDR，如 10.0.0.11/24"
+                          :placeholder="t('wizard.matrixCellPlaceholder')"
                           class="h-8 font-mono text-xs"
                           @update:model-value="setMatrixCell(row.machine.id, col.key, String($event))"
                         />
@@ -1680,7 +1677,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                       <TableCell>
                         <Input
                           :model-value="hostnameMatrix[row.machine.id] ?? ''"
-                          placeholder="node-01"
+                          :placeholder="t('wizard.matrixHostnamePlaceholder')"
                           class="h-8 font-mono text-xs"
                           @update:model-value="hostnameMatrix[row.machine.id] = String($event)"
                         />
@@ -1690,74 +1687,71 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 </Table>
               </div>
               <div class="flex items-center gap-2">
-                <Button variant="outline" size="sm" @click="fillIncremental">按各列首行递增填充</Button>
-                <span class="text-xs text-muted-foreground">取每列第一台的值，最后一字节逐台 +1（仅 IPv4）。</span>
+                <Button variant="outline" size="sm" @click="fillIncremental">{{ t('wizard.fillIncremental') }}</Button>
+                <span class="text-xs text-muted-foreground">{{ t('wizard.fillIncrementalHint') }}</span>
               </div>
               <p v-if="matrixColumns.length === 0" class="text-xs text-amber-600 dark:text-amber-400">
-                还没有可分配的接口列：网卡需选定匹配值、bond 需要成员、VLAN 需要 ID。
+                {{ t('wizard.noMatrixCols') }}
               </p>
             </template>
           </div>
-          <p v-else class="text-xs text-muted-foreground">不配置则由装机环境 DHCP 分配网络。</p>
+          <p v-else class="text-xs text-muted-foreground">{{ t('wizard.netAutoHint') }}</p>
         </div>
 
         <div class="grid gap-1.5">
-          <Label for="hostname-pattern">主机名</Label>
+          <Label for="hostname-pattern">{{ t('wizard.hostname') }}</Label>
           <Input
             id="hostname-pattern"
             v-model="hostnamePattern"
             :disabled="isBatchStatic && batchHostnameUsed"
-            placeholder="如 node-{index} → node-1、node-2…"
+            :placeholder="t('wizard.hostnamePlaceholder')"
             class="w-[320px] font-mono"
           />
           <p class="text-xs leading-relaxed text-muted-foreground">
-            <template v-if="isBatchStatic && batchHostnameUsed">已在下方逐台表格使用显式主机名（此模式被接管）。</template>
-            支持变量：{index}（按勾选顺序 1、2、3…）、{machine_id}、{serial}、{bmc_address}、{label:key}（取机器标签）；不含变量时所有机器同名（不推荐）。
-            逐台固定名可在静态网络的逐台表格里填「主机名」列。
+            <template v-if="isBatchStatic && batchHostnameUsed">{{ t('wizard.hostnameTaken') }}</template>
+            {{ t('wizard.hostnameHint') }}
           </p>
         </div>
 
         <div class="grid gap-1.5">
-          <Label>{{ isWindows ? '管理员密码（Administrator）' : 'root 密码' }}</Label>
+          <Label>{{ isWindows ? t('wizard.adminPassword') : t('wizard.rootPassword') }}</Label>
           <div class="flex flex-wrap items-center gap-2">
             <SegmentedControl
               v-model="rootMode"
               :options="[
-                { value: 'random', label: '按任务随机（推荐）' },
-                { value: 'manual', label: '手动指定' },
+                { value: 'random', label: t('wizard.rootRandom') },
+                { value: 'manual', label: t('wizard.rootManual') },
               ]"
             />
             <Input
               v-if="rootMode === 'manual'"
               v-model="rootPassword"
               type="password"
-              :placeholder="isWindows ? '管理员密码' : 'root 密码'"
+              :placeholder="isWindows ? t('wizard.adminPlaceholder') : t('wizard.rootPlaceholder')"
               class="w-[240px] font-mono"
             />
           </div>
-          <p class="text-xs leading-relaxed text-muted-foreground">随机模式下，密码将在装机完成时经一次性事件弹出，仅此一次，请留意保存。</p>
+          <p class="text-xs leading-relaxed text-muted-foreground">{{ t('wizard.rootHint') }}</p>
         </div>
 
         <div v-if="!isWindows" class="grid gap-1.5">
-          <Label>SSH 公钥</Label>
+          <Label>{{ t('wizard.sshKeys') }}</Label>
           <div class="grid gap-1.5">
             <div v-for="(_k, i) in sshKeys" :key="i" class="flex items-center gap-1.5">
-              <Input v-model="sshKeys[i]" placeholder="ssh-ed25519 AAAA… user@host" class="flex-1 font-mono" />
+              <Input v-model="sshKeys[i]" :placeholder="t('wizard.sshKeyPlaceholder')" class="flex-1 font-mono" />
               <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="sshKeys.splice(i, 1)">
                 <Trash2 class="size-4" />
               </Button>
             </div>
-            <Button variant="outline" size="sm" class="w-fit" @click="addSshKey">+ 添加公钥</Button>
-            <p class="text-xs leading-relaxed text-muted-foreground">
-              注意：这里的公钥是给你登录用的；「凭证」页的 SSH 私钥是引擎做带内盘查的认证凭据，两者互不相干。
-            </p>
+            <Button variant="outline" size="sm" class="w-fit" @click="addSshKey">{{ t('wizard.addSshKey') }}</Button>
+            <p class="text-xs leading-relaxed text-muted-foreground">{{ t('wizard.sshKeysHint') }}</p>
           </div>
         </div>
 
         <div v-if="isWindows" class="grid gap-1.5">
-          <Label>开启远程管理能力（opt-in，缺省全关）</Label>
+          <Label>{{ t('wizard.winCaps') }}</Label>
           <div class="flex flex-wrap gap-x-5 gap-y-2">
-            <label v-for="cap in [{ value: 'rdp', label: '远程桌面（RDP）' }, { value: 'winrm', label: 'WinRM 远程管理' }, { value: 'ping', label: 'ICMP ping' }]" :key="cap.value" class="flex cursor-pointer items-center gap-2 text-sm">
+            <label v-for="cap in [{ value: 'rdp', label: t('wizard.capRdp') }, { value: 'winrm', label: t('wizard.capWinrm') }, { value: 'ping', label: t('wizard.capPing') }]" :key="cap.value" class="flex cursor-pointer items-center gap-2 text-sm">
               <Checkbox
                 :model-value="winCaps.includes(cap.value as 'rdp' | 'winrm' | 'ping')"
                 @update:model-value="(v: boolean | 'indeterminate') => {
@@ -1770,43 +1764,43 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               {{ cap.label }}
             </label>
           </div>
-          <p class="text-xs leading-relaxed text-muted-foreground">全新系统默认不开任何入站管理面；按需开启是运营者的安全决策。</p>
+          <p class="text-xs leading-relaxed text-muted-foreground">{{ t('wizard.winCapsHint') }}</p>
         </div>
 
         <div v-if="!isWindows && !isDD" class="grid gap-1.5">
-          <Label>软件源</Label>
+          <Label>{{ t('wizard.repos') }}</Label>
           <div class="grid gap-1.5">
             <div v-for="(r, idx) in repos" :key="idx" class="flex flex-wrap items-center gap-1.5">
-              <Input v-model="r.name" placeholder="name" class="w-[130px] font-mono" />
-              <Input v-model="r.url" placeholder="http(s)://repo-url" class="min-w-0 flex-1 font-mono" />
-              <Input v-model="r.gpg_key_url" placeholder="GPG key URL（可选）" class="w-[200px] font-mono" />
-              <Input v-model="r.suite" placeholder="suite" class="w-[90px] font-mono" />
-              <Input v-model="r.components" placeholder="components" class="w-[110px] font-mono" />
+              <Input v-model="r.name" :placeholder="t('wizard.repoName')" class="w-[130px] font-mono" />
+              <Input v-model="r.url" :placeholder="t('wizard.repoUrl')" class="min-w-0 flex-1 font-mono" />
+              <Input v-model="r.gpg_key_url" :placeholder="t('wizard.repoGpg')" class="w-[200px] font-mono" />
+              <Input v-model="r.suite" :placeholder="t('wizard.repoSuite')" class="w-[90px] font-mono" />
+              <Input v-model="r.components" :placeholder="t('wizard.repoComponents')" class="w-[110px] font-mono" />
               <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="removeRepo(idx)">
                 <Trash2 class="size-4" />
               </Button>
             </div>
-            <Button variant="outline" size="sm" class="w-fit" @click="addRepo">+ 添加软件源</Button>
+            <Button variant="outline" size="sm" class="w-fit" @click="addRepo">{{ t('wizard.addRepo') }}</Button>
           </div>
         </div>
 
         <div v-if="!isDD" class="grid gap-1.5">
-          <Label>{{ isWindows ? '脚本（Windows：装后走引擎托管首启链；装前仅 setup 通路的 WinPE）' : '脚本' }}</Label>
+          <Label>{{ isWindows ? t('wizard.scriptsWinLabel') : t('wizard.scripts') }}</Label>
           <div class="grid gap-2">
             <div v-for="(sc, i) in scripts" :key="i" class="rounded-lg border p-3">
               <div class="mb-2 flex items-center justify-between gap-2">
                 <Select v-model="sc.stage">
                   <SelectTrigger class="w-[240px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pre_install">装前执行（pre_install）</SelectItem>
-                    <SelectItem value="post_install">装后执行（post_install）</SelectItem>
+                    <SelectItem value="pre_install">{{ t('wizard.stagePre') }}</SelectItem>
+                    <SelectItem value="post_install">{{ t('wizard.stagePost') }}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select v-if="isWindows" v-model="sc.shell">
                   <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cmd">cmd 批处理</SelectItem>
-                    <SelectItem value="powershell">PowerShell</SelectItem>
+                    <SelectItem value="cmd">{{ t('wizard.shellCmd') }}</SelectItem>
+                    <SelectItem value="powershell">{{ t('wizard.shellPs') }}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="scripts.splice(i, 1)">
@@ -1817,83 +1811,76 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                 v-model="sc.content"
                 :rows="4"
                 class="font-mono"
-                :placeholder="isWindows ? 'rem 或 PowerShell 语句（明文，提交时自动转 base64）' : '#!/bin/sh …（明文，提交时自动转 base64）'"
+                :placeholder="isWindows ? t('wizard.scriptPlaceholderWin') : t('wizard.scriptPlaceholder')"
               />
             </div>
-            <Button variant="outline" size="sm" class="w-fit" @click="addScript">+ 添加脚本</Button>
+            <Button variant="outline" size="sm" class="w-fit" @click="addScript">{{ t('wizard.addScript') }}</Button>
           </div>
         </div>
 
         <div class="grid gap-1.5">
-          <Label>引导方式</Label>
+          <Label>{{ t('wizard.boot') }}</Label>
           <SegmentedControl
             v-model="spec.boot!.strategy"
             :disabled="isWindows && policyDraftInstaller === 'agent'"
             :options="[
-              { value: 'virtual_media', label: '虚拟介质' },
-              { value: 'pxe', label: 'PXE' },
+              { value: 'virtual_media', label: t('wizard.bootVmedia') },
+              { value: 'pxe', label: t('wizard.bootPxe') },
             ]"
           />
           <p v-if="spec.boot?.strategy === 'pxe' && !conn.capabilities?.netboot_enabled" class="text-xs text-amber-600 dark:text-amber-400">
-            引擎未启用 netboot，PXE 提交会被拒绝。
+            {{ t('wizard.netbootOffWarn') }}
           </p>
           <p v-else-if="!isDD && spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="text-xs leading-relaxed text-muted-foreground">
-            Rocky9 系介质的 vMedia 是引导型 CD（介质上无安装包）：安装源需为 nfs:// 或 http(s) 树 URL——镜像库引用（image.id）建议搭配 PXE 使用。
+            {{ t('wizard.vmediaLibHint') }}
           </p>
           <div v-if="hasHeadlessTarget" class="grid gap-1.5">
-            <p class="text-xs text-amber-600 dark:text-amber-400">
-              含 {{ headlessTargets.length }} 台无带外机器（protocol=none）：PXE-only，引导等待窗内无 PXE sighting
-              将告警并等待人工上电（任务超时为总上限）。
-            </p>
+            <p class="text-xs text-amber-600 dark:text-amber-400">{{ t('wizard.headlessWarn', { n: headlessTargets.length }) }}</p>
             <div class="flex items-center gap-3">
               <NumberInput v-model="evidenceWait" :min="60" :max="3600" :step="60" class="w-32" />
-              <span class="text-xs text-muted-foreground">引导证据等待窗（秒；0 = 引擎缺省 10 分钟）</span>
+              <span class="text-xs text-muted-foreground">{{ t('wizard.evidenceWait') }}</span>
             </div>
           </div>
         </div>
 
         <div v-if="!isWindows" class="grid gap-1.5">
-          <Label>内核参数（排障逃生口）</Label>
+          <Label>{{ t('wizard.kernelArgs') }}</Label>
           <div class="grid gap-1.5">
             <Input
               v-model="kernelArgs"
               class="font-mono"
-              placeholder="安装器引导行追加，例：nomodeset modprobe.blacklist=nouveau"
+              :placeholder="t('wizard.kernelArgsPlaceholder')"
             />
             <Input
               v-model="installedKernelArgs"
               class="font-mono"
-              placeholder="装好的系统持久化，例：modprobe.blacklist=nouveau"
+              :placeholder="t('wizard.installedKernelArgsPlaceholder')"
             />
-            <p class="text-xs leading-relaxed text-muted-foreground">
-              无人值守装机的"GRUB 按 e"替代：安装器内核被硬件挂死（典型：GPU 触发 nouveau
-              卡死）时，上行走安装阶段、下行走装好后的系统首启（装上厂商驱动前同样会挂）。空白分隔；
-              BOOTIF/ip/console/inst.ks 等引擎自有参数不可声明，引号与分号不支持。
-            </p>
+            <p class="text-xs leading-relaxed text-muted-foreground">{{ t('wizard.kernelArgsHint') }}</p>
           </div>
         </div>
 
         <div v-if="isWindows" class="grid gap-1.5">
-          <Label>安装通路（windows 专用）</Label>
+          <Label>{{ t('wizard.winInstaller') }}</Label>
           <SegmentedControl
             v-model="policyDraftInstaller"
             :options="[
-              { value: 'auto', label: '自动（按部署事实）' },
-              { value: 'setup', label: 'setup（需 SMB 导出）' },
-              { value: 'agent', label: 'agent（PXE-only，无需 SMB）' },
+              { value: 'auto', label: t('wizard.installerAuto') },
+              { value: 'setup', label: t('wizard.installerSetup') },
+              { value: 'agent', label: t('wizard.installerAgent') },
             ]"
           />
           <p class="text-xs leading-relaxed text-muted-foreground">
-            Windows 仅支持 UEFI 引导。setup = setup.exe 黑盒，依赖部署层 SMB 导出（MAMMOTH_WINDOWS_INSTALL_SMB_UNC）；
-            agent = alpine agent wimlib 铺盘，依赖 extended ISO 池 + PXE（无需 SMB）。
-            当前部署：SMB 导出 {{ conn.capabilities?.windows_smb_share ? '已配置' : '未配置' }} ·
-            agent 通路 {{ conn.capabilities?.windows_agent_installer ? '可用' : '不可用' }}。
+            {{ t('wizard.installerHint', {
+              smb: conn.capabilities?.windows_smb_share ? t('wizard.smbConfigured') : t('wizard.smbNotConfigured'),
+              agent: conn.capabilities?.windows_agent_installer ? t('wizard.agentAvailable') : t('wizard.agentUnavailable'),
+            }) }}
           </p>
         </div>
 
         <div class="mt-5 flex items-center justify-between">
-          <Button variant="outline" @click="back">上一步</Button>
-          <Button @click="next">下一步：试算预览</Button>
+          <Button variant="outline" @click="back">{{ t('wizard.prev') }}</Button>
+          <Button @click="next">{{ t('wizard.nextPlan') }}</Button>
         </div>
       </CardContent>
     </Card>
@@ -1903,7 +1890,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
       <CardContent>
         <div v-if="planning" class="flex flex-col items-center gap-3 py-10">
           <Skeleton class="h-4 w-64" />
-          <p class="text-sm text-muted-foreground">正在对 {{ readyTargets.length }} 台机器运行只读试算…</p>
+          <p class="text-sm text-muted-foreground">{{ t('wizard.planning', { n: readyTargets.length }) }}</p>
         </div>
         <template v-else>
           <div class="flex flex-col gap-4">
@@ -1916,10 +1903,10 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                   class="rounded-md font-medium"
                   :style="{ color: '#10b981', borderColor: '#10b98155', backgroundColor: '#10b9811a' }"
                 >
-                  试算通过
+                  {{ t('wizard.planOk') }}
                 </Badge>
                 <Badge v-else variant="outline" class="rounded-md font-medium" :style="{ color: '#ef4444', borderColor: '#ef444455', backgroundColor: '#ef44441a' }">
-                  试算失败
+                  {{ t('wizard.planFail') }}
                 </Badge>
               </div>
               <template v-if="r.ok && r.plan">
@@ -1930,11 +1917,11 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                   <Table>
                     <TableHeader>
                       <TableRow class="bg-muted/50 hover:bg-muted/50">
-                        <TableHead class="w-28">设备</TableHead>
-                        <TableHead class="min-w-[150px]">serial</TableHead>
-                        <TableHead class="w-28">容量</TableHead>
-                        <TableHead class="w-20">保留</TableHead>
-                        <TableHead class="min-w-[200px]">计划分区</TableHead>
+                        <TableHead class="w-28">{{ t('wizard.colDevice') }}</TableHead>
+                        <TableHead class="min-w-[150px]">{{ t('wizard.colSerial') }}</TableHead>
+                        <TableHead class="w-28">{{ t('machineDetail.colSize') }}</TableHead>
+                        <TableHead class="w-20">{{ t('wizard.colKeep') }}</TableHead>
+                        <TableHead class="min-w-[200px]">{{ t('wizard.colPlanned') }}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1942,7 +1929,7 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                         <TableCell><span class="font-mono text-xs">{{ row.device }}</span></TableCell>
                         <TableCell><span class="font-mono text-xs">{{ row.serial || '—' }}</span></TableCell>
                         <TableCell class="text-muted-foreground">{{ formatBytes(row.size_bytes) }}</TableCell>
-                        <TableCell class="text-muted-foreground">{{ row.keep ? '是' : '否' }}</TableCell>
+                        <TableCell class="text-muted-foreground">{{ row.keep ? '✓' : '—' }}</TableCell>
                         <TableCell>
                           <span class="font-mono text-[11px]">
                             {{ (row.planned_partitions || []).map((p: { number: number; mount: string }) => `${p.number}:${p.mount}`).join(' ') }}
@@ -1958,8 +1945,8 @@ const HEALTH_GATE_DESC: Record<string, string> = {
               </Alert>
             </div>
             <div class="flex items-center justify-between">
-              <Button variant="outline" @click="back">上一步</Button>
-              <Button :disabled="!planAllOk" @click="step = 4">下一步：执行策略</Button>
+              <Button variant="outline" @click="back">{{ t('wizard.prev') }}</Button>
+              <Button :disabled="!planAllOk" @click="step = 4">{{ t('wizard.nextPolicy') }}</Button>
             </div>
           </div>
         </template>
@@ -1971,41 +1958,41 @@ const HEALTH_GATE_DESC: Record<string, string> = {
       <CardContent class="max-w-[560px]">
         <div class="grid gap-5">
           <div class="grid gap-1.5">
-            <Label for="policy-concurrency">并发数</Label>
+            <Label for="policy-concurrency">{{ t('wizard.concurrency') }}</Label>
             <NumberInput id="policy-concurrency" v-model="policy.concurrency" :min="1" :max="100" class="w-32" />
           </div>
           <div class="grid gap-1.5">
-            <Label>单机失败后</Label>
+            <Label>{{ t('wizard.onTaskFailure') }}</Label>
             <SegmentedControl
               v-model="policy.on_task_failure"
               :options="[
-                { value: 'continue', label: '继续其余机器' },
-                { value: 'abort_batch', label: '中止整批' },
+                { value: 'continue', label: t('wizard.failContinue') },
+                { value: 'abort_batch', label: t('wizard.failAbort') },
               ]"
             />
           </div>
           <div class="grid gap-1.5">
-            <Label for="policy-timeout">单机超时（秒）</Label>
+            <Label for="policy-timeout">{{ t('wizard.timeout') }}</Label>
             <NumberInput id="policy-timeout" v-model="policy.task_timeout_seconds" :min="60" :step="300" class="w-40" />
           </div>
           <div class="grid gap-1.5">
-            <Label>装前健康门禁（依据内存盘探针的逐盘 smartctl/nvme 读数）</Label>
+            <Label>{{ t('wizard.healthGate') }}</Label>
             <SegmentedControl
               v-model="policy.health_gate"
               :options="[
-                { value: 'off', label: '关闭' },
-                { value: 'report', label: '报告' },
-                { value: 'block', label: '拦截' },
+                { value: 'off', label: t('wizard.gateOff') },
+                { value: 'report', label: t('wizard.gateReport') },
+                { value: 'block', label: t('wizard.gateBlock') },
               ]"
             />
             <p class="text-xs leading-relaxed text-muted-foreground">{{ HEALTH_GATE_DESC[policy.health_gate] }}</p>
           </div>
         </div>
         <div class="mt-5 flex items-center justify-between">
-          <Button variant="outline" @click="back">上一步</Button>
+          <Button variant="outline" @click="back">{{ t('wizard.prev') }}</Button>
           <Button :disabled="submittingJob" @click="submit">
             <LoaderCircle v-if="submittingJob" class="size-4 animate-spin" />
-            提交装机任务（{{ readyTargets.length }} 台）
+            {{ t('wizard.submitN', { n: readyTargets.length }) }}
           </Button>
         </div>
       </CardContent>
