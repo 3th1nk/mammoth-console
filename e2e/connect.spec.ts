@@ -8,7 +8,7 @@ test.describe('连接', () => {
     await page.getByPlaceholder('MAMMOTH_API_TOKEN').fill('wrong-token')
     await page.getByRole('button', { name: '连接' }).click()
     // 引擎返回 401 → ConsoleApiError 文案,停留欢迎页
-    await expect(page.locator('.el-message')).toContainText(/401|token|失效/i, { timeout: 10_000 })
+    await expect(page.locator('[data-sonner-toast]')).toContainText(/401|token|失效/i, { timeout: 10_000 })
     await expect(page).toHaveURL(/welcome/)
   })
 

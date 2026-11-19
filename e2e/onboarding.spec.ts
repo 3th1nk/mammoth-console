@@ -14,7 +14,7 @@ test.describe('开箱向导', () => {
     await expect(ob).toContainText('跑第一次装机')
 
     // 引擎 8081 未开 PXE:零注册警示必须醒目出现
-    const warn = ob.locator('.el-alert')
+    const warn = ob.locator('[data-slot=alert]')
     await expect(warn).toBeVisible()
     await expect(warn).toContainText('未启用 PXE')
     await expect(warn).toContainText('MAMMOTH_PXE_ENABLED')
@@ -28,20 +28,18 @@ test.describe('开箱向导', () => {
 })
 
 test.describe('Webhook 订阅', () => {
-  test('类型下拉中文化 + 创建(secret 一次性)+ 删除', async ({ page }) => {
+  test('类型分组勾选 + 创建(secret 一次性)+ 删除', async ({ page }) => {
     await connect(page)
     await page.goto('/events')
     await page.getByRole('tab', { name: 'Webhooks 订阅' }).click()
     await page.getByRole('button', { name: '新建订阅' }).click()
 
-    const dlg = page.locator('.el-dialog').filter({ hasText: '新建 webhook 订阅' })
+    const dlg = page.locator('[data-slot=dialog-content]').filter({ hasText: '新建 webhook 订阅' })
     await dlg.getByPlaceholder(/ops\.example\.com/).fill('http://127.0.0.1:9999/e2e-hook')
 
-    // 类型下拉:按资源分组、中文选项、英文原文在列(multiple 下拉选完不自动收起)
-    await dlg.locator('.el-select').click()
-    await page.getByRole('option', { name: /机器注册/ }).click()
-    await expect(page.getByRole('option', { name: /盘查完成/ })).toBeVisible()
-    await page.keyboard.press('Escape')
+    // 类型按资源分组 checkbox:勾选「机器注册」
+    await dlg.locator('label').filter({ hasText: '机器注册' }).click()
+    await expect(dlg.getByText('盘查完成')).toBeVisible()
 
     await dlg.getByRole('button', { name: '创建' }).click()
     // secret 仅此一次
@@ -49,12 +47,12 @@ test.describe('Webhook 订阅', () => {
     await page.getByRole('button', { name: '我已保存' }).click()
 
     // 列表行:中文 tag 展示
-    const row = page.locator('.el-table__row').filter({ hasText: 'e2e-hook' })
+    const row = page.locator('[data-slot=table-row]').filter({ hasText: 'e2e-hook' })
     await expect(row).toContainText('机器注册')
 
-    // 清理
+    // 清理:确认弹窗内点「删除」
     await row.getByRole('button', { name: '删除' }).click()
-    await page.getByRole('button', { name: '删除' }).last().click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除' }).click()
     await expect(row).toHaveCount(0)
   })
 })

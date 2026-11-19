@@ -179,7 +179,7 @@ async function copyPassword() {
         <Separator orientation="vertical" class="mr-1 !h-6" />
         <div class="ms-auto flex items-center gap-2">
           <button
-            class="flex h-8 w-60 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
+            class="search-entry flex h-8 w-60 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
             @click="palette?.open()"
           >
             <Search class="size-4" />

@@ -228,7 +228,7 @@ const STATS = computed(() => [
       <AlertTitle>{{ loadError }}</AlertTitle>
     </Alert>
 
-    <Card v-if="showOnboarding">
+    <Card v-if="showOnboarding" class="onboarding">
       <CardHeader class="flex-row items-center justify-between">
         <CardTitle class="text-base">开箱向导 · 五步到第一台装好的机器</CardTitle>
         <Button variant="ghost" size="sm" @click="dismissOnboarding">跳过引导</Button>
