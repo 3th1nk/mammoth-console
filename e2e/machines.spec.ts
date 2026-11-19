@@ -15,9 +15,9 @@ test.describe('机器生命周期', () => {
     await page.getByRole('button', { name: '注册机器' }).click()
     const dlg = page.locator('[data-slot=dialog-content]').filter({ hasText: '注册机器' }).first()
     await dlg.getByPlaceholder(/203\.0\.113\.10/).fill(BMC)
-    // 协议/凭证模式是 segmented radio:点可视 label
-    await dlg.locator('label').filter({ hasText: '演示' }).click()
-    await dlg.locator('label').filter({ hasText: '新建凭证' }).click()
+    // 协议/凭证模式是 SegmentedControl(ToggleGroup button):直接点选项按钮
+    await dlg.getByRole('button', { name: '演示', exact: true }).click()
+    await dlg.getByRole('button', { name: '新建凭证', exact: true }).click()
     await dlg.getByPlaceholder(/bmc-rack01/).fill(CRED)
     await dlg.getByLabel('用户名').fill('admin')
     await dlg.getByLabel('密码').fill('hunter2')

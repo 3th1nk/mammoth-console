@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { LoaderCircle, TriangleAlert } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { machineDomain, jobDomain } from '@/api/queryKeys'
@@ -41,6 +42,7 @@ import EmptyState from '@/components/EmptyState.vue'
 const props = defineProps<{ machineId: string; modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const router = useRouter()
+const { t } = useI18n()
 const conn = useConnectionStore()
 const qc = useQueryClient()
 
@@ -89,11 +91,11 @@ function toggleDrive(serial?: string) {
 
 async function submit() {
   if (selectedCount.value === 0) {
-    toast.warning('请先选择要擦除的盘')
+    toast.warning(t('erase.selectFirst'))
     return
   }
   if (!confirmChecked.value) {
-    toast.warning('请先勾选确认框')
+    toast.warning(t('erase.confirmFirst'))
     return
   }
   submitting.value = true
@@ -109,11 +111,11 @@ async function submit() {
     // 异步 job 受理后机器视角（power_state 等）与任务列表都会变,即时失效
     void qc.invalidateQueries({ queryKey: machineDomain })
     void qc.invalidateQueries({ queryKey: jobDomain })
-    toast.success('擦盘已受理', {
-      description: jobId ? `任务 ${jobId} 已创建` : undefined,
+    toast.success(t('erase.accepted'), {
+      description: jobId ? t('actions.acceptedWithJob', { id: jobId }) : undefined,
       duration: 6000,
       action: jobId
-        ? { label: '查看进度', onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
+        ? { label: t('actions.viewProgress'), onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
         : undefined,
     })
     visible.value = false
@@ -129,16 +131,15 @@ async function submit() {
   <Dialog v-model:open="visible">
     <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
       <DialogHeader>
-        <DialogTitle>选盘擦除（NIST 800-88 控制器级清除）</DialogTitle>
-        <DialogDescription class="sr-only">破坏性操作确认</DialogDescription>
+        <DialogTitle>{{ t('erase.title') }}</DialogTitle>
+        <DialogDescription class="sr-only">{{ t('erase.destructive') }}</DialogDescription>
       </DialogHeader>
 
       <Alert variant="destructive">
         <TriangleAlert class="size-4" />
-        <AlertTitle>数据将不可恢复。这是引擎里破坏性最高的操作。</AlertTitle>
+        <AlertTitle>{{ t('erase.destructive') }}</AlertTitle>
         <AlertDescription>
-          两段防护：此处显式确认后提交；执行时 runner 还会重读控制器活表，serial 不在表上即拒。
-          部署擦盘确认策略：{{ conn.capabilities?.drive_erase_confirm ?? '—' }}
+          {{ t('erase.twoPhase', { policy: conn.capabilities?.drive_erase_confirm ?? '—' }) }}
         </AlertDescription>
       </Alert>
 
@@ -151,15 +152,15 @@ async function submit() {
                 <Checkbox
                   :model-value="allSelected"
                   :disabled="drivesQuery.isFetching.value"
-                  aria-label="全选"
+                  :aria-label="t('erase.selectAll')"
                   @update:model-value="() => toggleAll()"
                 />
               </TableHead>
-              <TableHead class="w-28">名称</TableHead>
-              <TableHead class="min-w-[150px]">serial</TableHead>
-              <TableHead class="w-28">容量</TableHead>
-              <TableHead class="w-20">介质</TableHead>
-              <TableHead class="w-24">协议</TableHead>
+              <TableHead class="w-28">{{ t('erase.colName') }}</TableHead>
+              <TableHead class="min-w-[150px]">{{ t('erase.colSerial') }}</TableHead>
+              <TableHead class="w-28">{{ t('erase.colSize') }}</TableHead>
+              <TableHead class="w-20">{{ t('erase.colMedium') }}</TableHead>
+              <TableHead class="w-24">{{ t('erase.colProtocol') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -168,14 +169,14 @@ async function submit() {
                 <Checkbox
                   :model-value="!!row.serial && selected.includes(row.serial)"
                   :disabled="!row.serial"
-                  :aria-label="`选择 ${row.name}`"
+                  :aria-label="t('erase.selectRow', { name: row.name })"
                   @update:model-value="() => toggleDrive(row.serial)"
                 />
               </TableCell>
               <TableCell><span class="font-mono text-xs">{{ row.name }}</span></TableCell>
               <TableCell>
                 <span v-if="row.serial" class="font-mono text-xs">{{ row.serial }}</span>
-                <span v-else class="text-xs text-muted-foreground">无（不可定位，跳过）</span>
+                <span v-else class="text-xs text-muted-foreground">{{ t('erase.noSerial') }}</span>
               </TableCell>
               <TableCell class="text-muted-foreground">{{ row.size_bytes ? formatBytes(row.size_bytes) : '—' }}</TableCell>
               <TableCell class="text-muted-foreground">{{ row.medium }}</TableCell>
@@ -183,16 +184,16 @@ async function submit() {
             </TableRow>
           </TableBody>
         </Table>
-        <EmptyState v-if="drives.length === 0" description="控制器未上报物理盘" />
+        <EmptyState v-if="drives.length === 0" :description="t('erase.noDrives')" />
       </div>
 
       <label class="flex cursor-pointer items-center gap-2 text-sm">
         <Checkbox v-model="confirmChecked" />
-        我确认擦除所选 {{ selectedCount }} 块盘的全部数据，此操作不可恢复。
+        {{ t('erase.confirmBox', { n: selectedCount }) }}
       </label>
 
       <DialogFooter>
-        <Button variant="outline" @click="visible = false">取消</Button>
+        <Button variant="outline" @click="visible = false">{{ t('common.cancel') }}</Button>
         <Button
           variant="destructive"
           :disabled="selectedCount === 0 || !confirmChecked"
@@ -200,7 +201,7 @@ async function submit() {
           @click="submit"
         >
           <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
-          擦除 {{ selectedCount }} 块盘
+          {{ t('erase.eraseN', { n: selectedCount }) }}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -135,11 +135,11 @@ const stateCounts = computed<Record<string, number>>(() => {
 })
 const truncated = computed(() => !!machinesQuery.data.value?.next_cursor)
 
-const JOB_TYPE_LABEL: Record<string, string> = {
+const JOB_TYPE_LABEL = computed<Record<string, string>>(() => ({
   install: t('jobs.typeInstall'),
   power: t('jobs.typePower'),
   discover: t('jobs.typeDiscover'),
-}
+}))
 
 function refetchAll() {
   machinesQuery.refetch()

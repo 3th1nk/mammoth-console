@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { LoaderCircle } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
@@ -40,6 +41,7 @@ import EmptyState from '@/components/EmptyState.vue'
 const props = defineProps<{ machineId: string; modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const router = useRouter()
+const { t } = useI18n()
 const conn = useConnectionStore()
 const qc = useQueryClient()
 
@@ -93,11 +95,11 @@ async function submit() {
     attributes[r.name] = parseValue(r.draft)
   }
   if (Object.keys(attributes).length === 0) {
-    toast.warning('没有修改任何属性')
+    toast.warning(t('bios.noChanges'))
     return
   }
   if (!confirmChecked.value) {
-    toast.warning('请先勾选确认框')
+    toast.warning(t('bios.confirmFirst'))
     return
   }
   submitting.value = true
@@ -113,11 +115,11 @@ async function submit() {
     // 异步 job 受理后机器视角与任务列表都会变,即时失效
     void qc.invalidateQueries({ queryKey: machineDomain })
     void qc.invalidateQueries({ queryKey: jobDomain })
-    toast.success('BIOS 修改已受理', {
-      description: jobId ? `任务 ${jobId} 已创建（属性在下次引导时生效）` : undefined,
+    toast.success(t('bios.accepted'), {
+      description: jobId ? t('bios.acceptedDesc', { id: jobId }) : undefined,
       duration: 6000,
       action: jobId
-        ? { label: '查看进度', onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
+        ? { label: t('actions.viewProgress'), onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
         : undefined,
     })
     visible.value = false
@@ -133,10 +135,9 @@ async function submit() {
   <Dialog v-model:open="visible">
     <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
       <DialogHeader>
-        <DialogTitle>修改 BIOS 属性（下次引导生效）</DialogTitle>
+        <DialogTitle>{{ t('bios.title') }}</DialogTitle>
         <DialogDescription>
-          属性为 pending 值：提交后由 BMC 在下次引导时应用。引擎执行前会重读活属性表，未知属性名即拒。
-          部署 BIOS 确认策略：{{ conn.capabilities?.bios_set_confirm ?? '—' }}
+          {{ t('bios.desc', { policy: conn.capabilities?.bios_set_confirm ?? '—' }) }}
         </DialogDescription>
       </DialogHeader>
 
@@ -145,10 +146,10 @@ async function submit() {
         <Table>
           <TableHeader>
             <TableRow class="bg-muted/50 hover:bg-muted/50">
-              <TableHead class="min-w-[200px]">属性名</TableHead>
-              <TableHead class="min-w-[140px]">当前值</TableHead>
-              <TableHead class="min-w-[180px]">新值（留空=清空）</TableHead>
-              <TableHead class="w-16">恢复</TableHead>
+              <TableHead class="min-w-[200px]">{{ t('bios.colName') }}</TableHead>
+              <TableHead class="min-w-[140px]">{{ t('bios.colCurrent') }}</TableHead>
+              <TableHead class="min-w-[180px]">{{ t('bios.colNew') }}</TableHead>
+              <TableHead class="w-16">{{ t('bios.restore') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -164,13 +165,13 @@ async function submit() {
                   class="text-xs text-primary underline-offset-2 hover:underline"
                   @click="row.draft = row.current"
                 >
-                  还原
+                  {{ t('bios.restore') }}
                 </button>
               </TableCell>
             </TableRow>
           </TableBody>
         </Table>
-        <EmptyState v-if="rows.length === 0" description="控制器未上报 BIOS 属性表" />
+        <EmptyState v-if="rows.length === 0" :description="t('bios.noAttrs')" />
       </div>
 
       <label
@@ -178,18 +179,18 @@ async function submit() {
         :class="changedRows.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
       >
         <Checkbox v-model="confirmChecked" :disabled="changedRows.length === 0" />
-        我确认提交 {{ changedRows.length }} 项属性修改。
+        {{ t('bios.confirmBox', { n: changedRows.length }) }}
       </label>
 
       <DialogFooter>
-        <Button variant="outline" @click="visible = false">取消</Button>
+        <Button variant="outline" @click="visible = false">{{ t('common.cancel') }}</Button>
         <Button
           :disabled="changedRows.length === 0 || !confirmChecked"
           :loading="submitting"
           @click="submit"
         >
           <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
-          提交 {{ changedRows.length }} 项修改
+          {{ t('bios.submitN', { n: changedRows.length }) }}
         </Button>
       </DialogFooter>
     </DialogContent>

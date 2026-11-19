@@ -74,19 +74,19 @@ const stateModel = computed({
   },
 })
 
-const TYPE_OPTIONS = [
+const TYPE_OPTIONS = computed(() => [
   { value: 'install', label: t('jobs.typeInstall') },
   { value: 'power', label: t('jobs.typePower') },
   { value: 'discover', label: t('jobs.typeDiscover') },
-]
-const STATE_OPTIONS = [
+])
+const STATE_OPTIONS = computed(() => [
   { value: 'pending', label: t('states.jobPending') },
   { value: 'running', label: t('states.jobRunning') },
   { value: 'succeeded', label: t('states.jobSucceeded') },
   { value: 'partial', label: t('states.jobPartial') },
   { value: 'failed', label: t('states.jobFailed') },
   { value: 'canceled', label: t('states.jobCanceled') },
-]
+])
 
 function resetPaging() {
   cursor.value = undefined
@@ -109,11 +109,11 @@ function open(job: Job) {
   router.push({ name: 'job-detail', params: { id: job.id } })
 }
 
-const JOB_TYPE_LABEL: Record<string, string> = {
+const JOB_TYPE_LABEL = computed<Record<string, string>>(() => ({
   install: t('jobs.typeInstall'),
   power: t('jobs.typePower'),
   discover: t('jobs.typeDiscover'),
-}
+}))
 </script>
 
 <template>
@@ -174,6 +174,7 @@ const JOB_TYPE_LABEL: Record<string, string> = {
               <TableRow v-for="row in rows" :key="row.id" class="cursor-pointer" @click="open(row)">
                 <TableCell><span class="font-mono text-xs">{{ row.id }}</span></TableCell>
                 <TableCell>{{ JOB_TYPE_LABEL[row.type] ?? row.type }}</TableCell>
+
                 <TableCell><StateBadge kind="job" :state="row.state" /></TableCell>
                 <TableCell><JobSummaryBar :summary="row.summary" compact /></TableCell>
                 <TableCell class="text-muted-foreground">{{ row.summary.total }}</TableCell>

@@ -267,13 +267,13 @@ function fmtAttrs(p: BiosProfile): string {
     .join('\n')
 }
 
-const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
+const ATTR_TYPE_OPTIONS = computed<{ value: AttrType; label: string }[]>(() => [
   { value: 'auto', label: t('biosProfiles.typeAuto') },
   { value: 'string', label: t('biosProfiles.typeString') },
   { value: 'number', label: t('biosProfiles.typeNumber') },
   { value: 'boolean', label: t('biosProfiles.typeBoolean') },
   { value: 'json', label: t('biosProfiles.typeJson') },
-]
+])
 </script>
 
 <template>

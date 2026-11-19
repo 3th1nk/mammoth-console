@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ChevronDown, LoaderCircle, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
@@ -40,6 +41,8 @@ const visible = computed({
 
 const qc = useQueryClient()
 
+const { t } = useI18n()
+
 const submitting = ref(false)
 
 const bmcAddress = ref('')
@@ -61,9 +64,7 @@ function headlessAddress(): string {
 // 认领提示随协议切换：无带外没有 BMC 可补，认领即确认按无带外登记
 // （引擎要求 claim 显式带 protocol=none，docs/13-headless-design.md §3.1）。
 const claimTip = computed(() =>
-  isHeadless.value
-    ? '认领 = 按无带外机器登记（以该 MAC 为身份，无需 BMC 寻址与凭证），sighting 的固件观测与探针报告会迁移到新机器'
-    : '认领 = 补齐 BMC 寻址与凭证，sighting 的固件观测与探针报告会迁移到新机器',
+  isHeadless.value ? t('pending.claimTipHeadless') : t('pending.claimTipBmc'),
 )
 const credMode = ref<'new' | 'existing'>('new')
 const credName = ref('')
@@ -110,7 +111,7 @@ function addLabel() {
   const v = labelInput.value.trim()
   if (!v) return
   if (!/^[^=]+=[^=]*$/.test(v)) {
-    toast.warning('标签格式为 k=v')
+    toast.warning(t('pending.labelFormatError'))
     return
   }
   if (!labelChips.value.includes(v)) labelChips.value = [...labelChips.value, v]
@@ -145,22 +146,22 @@ async function submit() {
   let credentialIdFinal = credId.value.trim()
   if (isHeadless.value) {
     if (!MAC_OK.test(headlessMac.value.trim())) {
-      toast.warning('请填写装机网卡的 MAC 地址（如 AA:BB:CC:DD:EE:01）')
+      toast.warning(t('pending.macRequired'))
       return
     }
     bmcAddressFinal = headlessAddress()
     credentialIdFinal = ''
   } else {
     if (!bmcAddressFinal) {
-      toast.warning('请填写 BMC 地址')
+      toast.warning(t('pending.bmcRequired'))
       return
     }
     if (credMode.value === 'new' && (!credName.value.trim() || !credUser.value || !credPass.value)) {
-      toast.warning('请填写新凭证的名称、用户名与密码')
+      toast.warning(t('pending.credFieldsRequired'))
       return
     }
     if (credMode.value === 'existing' && !credentialIdFinal) {
-      toast.warning('请填写已有凭证 ID（cred_…）')
+      toast.warning(t('pending.credIdRequired'))
       return
     }
     if (credMode.value === 'new') {
@@ -191,8 +192,8 @@ async function submit() {
       : await unwrap(await getClient().POST('/api/v1/machines', { body }))
     toast.success(
       props.claimMac
-        ? `认领成功：${machine.id}，固件观测与探针报告已迁移`
-        : `注册成功：${machine.id}，已自动开始盘查`,
+        ? t('pending.claimed', { id: machine.id })
+        : t('pending.registered', { id: machine.id }),
     )
     // 即时失效，不等 SSE 回环：认领/注册影响待认领数与机器台账；
     // 内联新建凭证时凭证列表也变了（徽标/列表/详情页全部联动刷新）
@@ -215,82 +216,75 @@ async function submit() {
   <Dialog v-model:open="visible">
     <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[560px]">
       <DialogHeader>
-        <DialogTitle>{{ claimMac ? `认领机器 ${claimMac}` : '注册机器' }}</DialogTitle>
-        <DialogDescription v-if="!claimMac">录入机器的 BMC 寻址与凭证，注册后自动开始盘查。</DialogDescription>
-        <DialogDescription v-else>为 sighting 补齐登记信息完成收编。</DialogDescription>
+        <DialogTitle>{{ claimMac ? t('pending.claimTitle', { mac: claimMac }) : t('pending.registerTitle') }}</DialogTitle>
+        <DialogDescription v-if="!claimMac">{{ t('pending.registerSubtitle') }}</DialogDescription>
+        <DialogDescription v-else>{{ t('pending.claimSubtitle') }}</DialogDescription>
       </DialogHeader>
 
       <Alert v-if="claimMac" class="border-blue-500/30 bg-blue-500/5">
         <AlertTitle>{{ claimTip }}</AlertTitle>
-        <AlertDescription v-if="isHeadless" class="text-xs">
-          已取自该机器 PXE 引导时上报的 MAC（引擎认领以此为身份，不可改）。
-        </AlertDescription>
+        <AlertDescription v-if="isHeadless" class="text-xs">{{ t('pending.claimTipFromSighting') }}</AlertDescription>
       </Alert>
 
       <form class="grid gap-4" @submit.prevent="submit">
         <div class="grid gap-1.5">
-          <Label>带外协议</Label>
+          <Label>{{ t('pending.protocol') }}</Label>
           <SegmentedControl
             v-model="protocol"
             :options="[
-              { value: 'auto', label: '自动（Redfish→IPMI）' },
-              { value: 'redfish', label: 'Redfish' },
-              { value: 'ipmi', label: 'IPMI' },
-              { value: 'fake', label: '演示' },
-              { value: 'none', label: '无带外' },
+              { value: 'auto', label: t('pending.protocolAuto') },
+              { value: 'redfish', label: t('pending.protocolRedfish') },
+              { value: 'ipmi', label: t('pending.protocolIpmi') },
+              { value: 'fake', label: t('pending.protocolFake') },
+              { value: 'none', label: t('pending.protocolNone') },
             ]"
           />
         </div>
 
         <div v-if="isHeadless" class="grid gap-1.5">
-          <Label for="headless-mac">装机网卡 MAC（机器身份，装机走 PXE + WoL/人工上电）</Label>
-          <Input id="headless-mac" v-model="headlessMac" placeholder="AA:BB:CC:DD:EE:01" class="font-mono" :disabled="!!claimMac" />
-          <p class="text-xs leading-relaxed text-muted-foreground">
-            无带外机器以合成地址 none://&lt;mac&gt; 注册；装机网段需 PXE 可达，关机唤醒依赖
-            WoL（跨网段需引擎侧 edge 代发）或人工上电兜底。
-          </p>
+          <Label for="headless-mac">{{ t('pending.macLabel') }}</Label>
+          <Input id="headless-mac" v-model="headlessMac" :placeholder="t('pending.macPlaceholder')" class="font-mono" :disabled="!!claimMac" />
+          <p class="text-xs leading-relaxed text-muted-foreground">{{ t('pending.macHint') }}</p>
         </div>
         <div v-else class="grid gap-1.5">
-          <Label for="bmc-address">BMC 地址（host 或 host:port）</Label>
-          <Input id="bmc-address" v-model="bmcAddress" placeholder="203.0.113.10 或 203.0.113.10:443" class="font-mono" />
+          <Label for="bmc-address">{{ t('pending.bmcLabel') }}</Label>
+          <Input id="bmc-address" v-model="bmcAddress" :placeholder="t('pending.bmcPlaceholder')" class="font-mono" />
         </div>
 
         <template v-if="!isHeadless">
           <div class="grid gap-1.5">
-            <Label>BMC 凭证</Label>
+            <Label>{{ t('pending.credModeLabel') }}</Label>
             <SegmentedControl
               v-model="credMode"
               :options="[
-                { value: 'new', label: '新建凭证' },
-                { value: 'existing', label: '使用已有凭证' },
+                { value: 'new', label: t('pending.credModeNew') },
+                { value: 'existing', label: t('pending.credModeExisting') },
               ]"
             />
           </div>
 
           <div v-if="credMode === 'new'" class="grid gap-4">
             <div class="grid gap-1.5">
-              <Label for="cred-name">凭证名称</Label>
-              <Input id="cred-name" v-model="credName" placeholder="如 bmc-rack01（唯一）" />
+              <Label for="cred-name">{{ t('pending.credName') }}</Label>
+              <Input id="cred-name" v-model="credName" :placeholder="t('pending.credNamePlaceholder')" />
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="grid gap-1.5">
-                <Label for="cred-user">用户名</Label>
+                <Label for="cred-user">{{ t('pending.credUser') }}</Label>
                 <Input id="cred-user" v-model="credUser" />
               </div>
               <div class="grid gap-1.5">
-                <Label for="cred-pass">密码</Label>
+                <Label for="cred-pass">{{ t('pending.credPass') }}</Label>
                 <Input id="cred-pass" v-model="credPass" type="password" />
               </div>
             </div>
-            <p class="text-xs text-muted-foreground">
-              密码仅用于提交：加密存储后任何接口都不会回显，请自行妥善保管。
-            </p>
+            <p class="text-xs text-muted-foreground">{{ t('pending.credPassHint') }}</p>
           </div>
           <div v-else class="grid gap-1.5">
-            <Label>选择 BMC 凭证</Label>
+            <Label>{{ t('pending.selectCred') }}</Label>
             <Select v-model="credId">
               <SelectTrigger>
-                <SelectValue placeholder="选择凭证" />
+                <SelectValue :placeholder="t('pending.selectCredPlaceholder')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="c in bmcCreds" :key="c.id" :value="c.id">
@@ -304,15 +298,15 @@ async function submit() {
             <CollapsibleTrigger
               class="group flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
             >
-              带内 SSH（可选，用于分区级盘查）
+              {{ t('pending.sshCollapsible') }}
               <ChevronDown class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
             </CollapsibleTrigger>
             <CollapsibleContent class="grid gap-4 pt-3">
               <div class="grid gap-1.5">
-                <Label>SSH 凭证</Label>
+                <Label>{{ t('pending.sshCred') }}</Label>
                 <Select v-model="sshCredId">
                   <SelectTrigger>
-                    <SelectValue placeholder="选择 SSH 凭证" />
+                    <SelectValue :placeholder="t('pending.sshCredPlaceholder')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem v-for="c in sshCreds" :key="c.id" :value="c.id">
@@ -322,16 +316,16 @@ async function submit() {
                 </Select>
               </div>
               <div class="grid gap-1.5">
-                <Label for="ssh-address">带内地址</Label>
-                <Input id="ssh-address" v-model="sshAddress" placeholder="机器业务网 IP（与 BMC 带外网络无关）" class="font-mono" />
+                <Label for="ssh-address">{{ t('pending.sshAddress') }}</Label>
+                <Input id="ssh-address" v-model="sshAddress" :placeholder="t('pending.sshAddressPlaceholder')" class="font-mono" />
               </div>
             </CollapsibleContent>
           </Collapsible>
         </template>
 
         <div class="grid gap-1.5">
-          <Label for="machine-label">标签</Label>
-          <Input id="machine-label" v-model="labelInput" placeholder="k=v，回车添加（如 env=prod）" @keyup.enter="addLabel" />
+          <Label for="machine-label">{{ t('pending.labels') }}</Label>
+          <Input id="machine-label" v-model="labelInput" :placeholder="t('pending.labelsPlaceholder')" @keyup.enter="addLabel" />
           <div v-if="labelChips.length > 0" class="flex flex-wrap gap-1.5">
             <span
               v-for="chip in labelChips"
@@ -347,10 +341,10 @@ async function submit() {
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" @click="visible = false">取消</Button>
+          <Button type="button" variant="outline" @click="visible = false">{{ t('common.cancel') }}</Button>
           <Button type="submit" :disabled="submitting">
             <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
-            {{ claimMac ? '认领' : '注册' }}
+            {{ claimMac ? t('pending.claimBtn') : t('pending.registerBtn') }}
           </Button>
         </DialogFooter>
       </form>

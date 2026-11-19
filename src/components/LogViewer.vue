@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from '@/stores/connection'
 import { subscribeSse, type SseHandle } from '@/api/sse'
 import { getClient } from '@/api/client'
@@ -33,6 +34,7 @@ const BUFFER_MAX = 2000
 const EDGE = 40 // 距底/距顶多少像素算"贴边"（跟随判定 / 加载更早触发）
 
 const conn = useConnectionStore()
+const { t } = useI18n()
 const logs = ref<LogLine[]>([])
 const ended = ref(false)
 const following = ref(true)
@@ -259,26 +261,26 @@ onUnmounted(() => {
       </div>
       <label class="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
         <input v-model="following" type="checkbox" class="size-3.5 accent-[var(--primary)]" />
-        跟随尾部
+        {{ t('logViewer.follow') }}
       </label>
       <span
         v-if="!hasOlder && logs.length > 0"
         class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
       >
-        已到最早
+        {{ t('logViewer.atOldest') }}
       </span>
       <span
         v-if="ended"
         class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
       >
-        任务已终态，日志收流完毕
+        {{ t('logViewer.ended') }}
       </span>
       <button
         v-if="!following && !ended"
         class="ml-auto rounded-md px-2 py-1 text-xs text-primary underline-offset-2 hover:underline"
         @click="jumpToBottom"
       >
-        回到底部 ↓
+        {{ t('logViewer.jumpBottom') }}
       </button>
     </div>
     <div ref="container" class="h-[360px] overflow-auto bg-[#1e1e1e] px-2.5 py-2 font-mono text-xs leading-[1.7]" @scroll="onScroll">
@@ -290,7 +292,7 @@ onUnmounted(() => {
         <span v-if="l.attrs && Object.keys(l.attrs).length" class="ml-2 text-[#808080]">{{ JSON.stringify(l.attrs) }}</span>
       </div>
       <div v-if="visible.length === 0" class="text-[#808080]">
-        暂无日志{{ ended ? '' : '，等待输出…' }}
+        {{ ended ? t('logViewer.empty') : t('logViewer.emptyRunning') }}
       </div>
     </div>
   </div>

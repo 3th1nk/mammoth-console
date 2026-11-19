@@ -2,6 +2,7 @@
 import type { Component } from 'vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   Bell,
   FileText,
@@ -34,6 +35,7 @@ import {
 const visible = ref(false)
 const term = ref('')
 const loading = ref(false)
+const { t } = useI18n()
 const router = useRouter()
 const conn = useConnectionStore()
 
@@ -45,16 +47,16 @@ type Item = {
   to: { name: string; params?: Record<string, string> }
 }
 
-const NAV_ITEMS: Item[] = [
-  { key: 'nav-dashboard', icon: LayoutDashboard, title: '总览', to: { name: 'dashboard' } },
-  { key: 'nav-machines', icon: Server, title: '机器', to: { name: 'machines' } },
-  { key: 'nav-pending', icon: Bell, title: '待认领', to: { name: 'pending' } },
-  { key: 'nav-jobs', icon: List, title: '任务', to: { name: 'jobs' } },
-  { key: 'nav-events', icon: FileText, title: '事件', to: { name: 'events' } },
-  { key: 'nav-images', icon: Package, title: '镜像库', to: { name: 'images' } },
-  { key: 'nav-credentials', icon: KeyRound, title: '凭证', to: { name: 'credentials' } },
-  { key: 'nav-settings', icon: Settings, title: '设置', to: { name: 'settings' } },
-]
+const NAV_ITEMS = computed<Item[]>(() => [
+  { key: 'nav-dashboard', icon: LayoutDashboard, title: t('nav.dashboard'), to: { name: 'dashboard' } },
+  { key: 'nav-machines', icon: Server, title: t('nav.machines'), to: { name: 'machines' } },
+  { key: 'nav-pending', icon: Bell, title: t('nav.pending'), to: { name: 'pending' } },
+  { key: 'nav-jobs', icon: List, title: t('nav.jobs'), to: { name: 'jobs' } },
+  { key: 'nav-events', icon: FileText, title: t('nav.events'), to: { name: 'events' } },
+  { key: 'nav-images', icon: Package, title: t('nav.images'), to: { name: 'images' } },
+  { key: 'nav-credentials', icon: KeyRound, title: t('nav.credentials'), to: { name: 'credentials' } },
+  { key: 'nav-settings', icon: Settings, title: t('nav.settings'), to: { name: 'settings' } },
+])
 
 const machines = ref<Item[]>([])
 const JOB_LABEL: Record<string, string> = {
@@ -138,9 +140,9 @@ const filteredJobs = computed(() => {
 
 // 展示分组:无搜索词时是导航+最近任务,有搜索词时是引擎机器结果+任务
 const groups = computed<{ label: string; items: Item[] }[]>(() => [
-  { label: '导航', items: term.value.trim() ? [] : NAV_ITEMS },
-  { label: '机器', items: machines.value },
-  { label: '最近任务', items: filteredJobs.value },
+  { label: t('common.paletteGroupNav'), items: term.value.trim() ? [] : NAV_ITEMS.value },
+  { label: t('common.paletteGroupMachines'), items: machines.value },
+  { label: t('common.paletteGroupJobs'), items: filteredJobs.value },
 ])
 
 function pick(item: Item) {
@@ -182,18 +184,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <Dialog :open="visible" @update:open="(v: boolean) => (visible = v)">
     <DialogContent class="max-w-[560px] overflow-hidden p-0">
       <DialogHeader class="sr-only">
-        <DialogTitle>搜索</DialogTitle>
-        <DialogDescription>搜索机器、任务或跳转页面</DialogDescription>
+        <DialogTitle>{{ t('common.paletteTitle') }}</DialogTitle>
+        <DialogDescription>{{ t('common.paletteDesc') }}</DialogDescription>
       </DialogHeader>
       <Command class="**:data-[slot=command-input-wrapper]:h-12">
         <!-- CommandInput 内部硬绑 filterState.search(外层 v-model 会被覆盖):
              异步搜索经原生 input 事件同步 term -->
         <CommandInput
-          placeholder="搜索机器（序列号 / BMC / 厂商 / 标签）或任务 ID…"
+          :placeholder="t('common.searchPlaceholder')"
           @input="(e: Event) => (term = (e.target as HTMLInputElement).value)"
         />
         <CommandList class="max-h-[380px] py-1.5">
-          <CommandEmpty>无匹配结果</CommandEmpty>
+          <CommandEmpty>{{ t('common.noMatch') }}</CommandEmpty>
           <template v-for="(group, gi) in groups" :key="gi">
             <CommandGroup v-if="group.items.length > 0" :heading="group.label">
               <CommandItem
@@ -219,12 +221,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             v-if="loading"
             class="px-4 py-3 text-center text-sm text-muted-foreground"
           >
-            搜索中…
+            {{ t('common.searching') }}
           </div>
         </CommandList>
       </Command>
       <div class="flex justify-end gap-4 border-t px-4 py-2.5 text-xs text-muted-foreground">
-        <span>↑↓ 选择</span><span>↵ 跳转</span><span>Esc 关闭</span>
+        <span>{{ t('common.searchHintUp') }}</span><span>{{ t('common.searchHintEnter') }}</span><span>{{ t('common.searchHintEsc') }}</span>
       </div>
     </DialogContent>
   </Dialog>
