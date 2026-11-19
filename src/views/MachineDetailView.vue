@@ -656,7 +656,7 @@ const title = computed(() => {
               </TableHeader>
               <TableBody>
                 <TableRow v-for="row in acceptance.checks ?? []" :key="row.name">
-                  <TableCell>{{ CHECK_LABEL[row.name] ? t(CHECK_LABEL[row.name]) : row.name }}</TableCell>
+                  <TableCell>{{ CHECK_LABEL[row.name] ? t(CHECK_LABEL[row.name]!) : row.name }}</TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
