@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import * as echarts from 'echarts'
 import { CircleCheck, RefreshCcw } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import {
@@ -31,6 +32,7 @@ import { formatTime, formatVersion } from '@/utils/format'
 
 const MACHINES_STATS_PAGE = 200
 
+const { t } = useI18n()
 const conn = useConnectionStore()
 const theme = useThemeStore()
 
@@ -95,32 +97,32 @@ const showOnboarding = computed(() => !dismissed.value && !hasInstall.value)
 const onboardingSteps = computed(() => [
   {
     done: true,
-    title: '连接引擎',
-    desc: `已连接 ${formatVersion(conn.capabilities?.version)}`,
+    title: t('dashboard.obConnected'),
+    desc: t('dashboard.obConnectedDesc', { version: formatVersion(conn.capabilities?.version) }),
     to: '',
   },
   {
     done: hasCred.value,
-    title: '新建 BMC 凭证',
-    desc: '带外操作的登录凭据（用户名/密码）',
+    title: t('dashboard.obCred'),
+    desc: t('dashboard.obCredDesc'),
     to: '/credentials',
   },
   {
     done: hasImage.value,
-    title: '注册装机镜像',
-    desc: 'http(s) 地址 + SHA256，引擎后台拉取校验',
+    title: t('dashboard.obImage'),
+    desc: t('dashboard.obImageDesc'),
     to: '/images',
   },
   {
     done: machines.value.length > 0,
-    title: '机器就绪',
-    desc: '注册机器，或开启零注册等机器自己出现',
+    title: t('dashboard.obMachine'),
+    desc: t('dashboard.obMachineDesc'),
     to: '/machines',
   },
   {
     done: hasInstall.value,
-    title: '跑第一次装机',
-    desc: '机器列表勾选 → 装机 → 四步向导',
+    title: t('dashboard.obInstall'),
+    desc: t('dashboard.obInstallDesc'),
     to: '/machines',
   },
 ])
@@ -134,9 +136,9 @@ const stateCounts = computed<Record<string, number>>(() => {
 const truncated = computed(() => !!machinesQuery.data.value?.next_cursor)
 
 const JOB_TYPE_LABEL: Record<string, string> = {
-  install: '装机',
-  power: '电源',
-  discover: '盘查',
+  install: t('jobs.typeInstall'),
+  power: t('jobs.typePower'),
+  discover: t('jobs.typeDiscover'),
 }
 
 function refetchAll() {
@@ -180,7 +182,7 @@ function renderChart() {
         type: 'pie',
         radius: ['52%', '78%'],
         label: { show: false },
-        data: data.length > 0 ? data : [{ name: '暂无机器', value: 1, itemStyle: { color: fgMuted } }],
+        data: data.length > 0 ? data : [{ name: t('dashboard.noMachinesYet'), value: 1, itemStyle: { color: fgMuted } }],
       },
     ],
   })
@@ -205,10 +207,10 @@ onUnmounted(() => {
 })
 
 const STATS = computed(() => [
-  { label: '机器（已注册）', value: machines.value.length, note: truncated.value ? `仅统计最近 ${MACHINES_STATS_PAGE} 台` : '' },
-  { label: '待认领（零注册）', value: pendingQuery.data.value?.items.length ?? 0, note: '' },
-  { label: '进行中任务', value: runningJobsQuery.data.value?.items.length ?? 0, note: '' },
-  { label: '最近失败任务', value: failedJobsQuery.data.value?.items.length ?? 0, note: '' },
+  { label: t('dashboard.statMachines'), value: machines.value.length, note: truncated.value ? t('dashboard.truncatedNote', { n: MACHINES_STATS_PAGE }) : '' },
+  { label: t('dashboard.statPending'), value: pendingQuery.data.value?.items.length ?? 0, note: '' },
+  { label: t('dashboard.statRunningJobs'), value: runningJobsQuery.data.value?.items.length ?? 0, note: '' },
+  { label: t('dashboard.statFailedJobs'), value: failedJobsQuery.data.value?.items.length ?? 0, note: '' },
 ])
 </script>
 
@@ -216,11 +218,11 @@ const STATS = computed(() => [
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">总览</h2>
-        <p class="text-sm text-muted-foreground">机器、待认领与任务概况</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('dashboard.title') }}</h2>
+        <p class="text-sm text-muted-foreground">{{ t('dashboard.subtitle') }}</p>
       </div>
       <Button variant="outline" size="sm" @click="refetchAll">
-        <RefreshCcw class="size-4" /> 刷新
+        <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
       </Button>
     </div>
 
@@ -230,9 +232,9 @@ const STATS = computed(() => [
 
     <Card v-if="showOnboarding" class="onboarding">
       <CardHeader>
-        <CardTitle class="text-base">开箱向导 · 五步到第一台装好的机器</CardTitle>
+        <CardTitle class="text-base">{{ t('dashboard.onboardingTitle') }}</CardTitle>
         <CardAction>
-          <Button variant="ghost" size="sm" @click="dismissOnboarding">跳过引导</Button>
+          <Button variant="ghost" size="sm" @click="dismissOnboarding">{{ t('dashboard.skip') }}</Button>
         </CardAction>
       </CardHeader>
       <CardContent class="flex flex-col gap-2.5">
@@ -255,21 +257,15 @@ const STATS = computed(() => [
             <div class="text-xs text-muted-foreground">{{ st.desc }}</div>
           </div>
           <RouterLink v-if="!st.done && st.to" :to="st.to">
-            <Button variant="outline" size="sm">前往</Button>
+            <Button variant="outline" size="sm">{{ t('dashboard.go') }}</Button>
           </RouterLink>
         </div>
         <Alert
           v-if="!conn.capabilities?.netboot_enabled"
           class="border-amber-500/40 bg-amber-500/5"
         >
-          <AlertTitle class="text-amber-700 dark:text-amber-400">
-            当前引擎未启用 PXE——零注册走不通，裸机插电不会自己出现在待认领里
-          </AlertTitle>
-          <AlertDescription>
-            要让机器自己出现，需在引擎部署环境设置 MAMMOTH_PXE_ENABLED=true（零注册再加
-            MAMMOTH_PXE_ENROLL 与 MAMMOTH_PXE_ENROLL_TOKEN）并重启；否则请用注册对话框或 API
-            手动录入机器。
-          </AlertDescription>
+          <AlertTitle class="text-amber-700 dark:text-amber-400">{{ t('dashboard.pxeWarnTitle') }}</AlertTitle>
+          <AlertDescription>{{ t('dashboard.pxeWarnDesc') }}</AlertDescription>
         </Alert>
       </CardContent>
     </Card>
@@ -286,22 +282,22 @@ const STATS = computed(() => [
 
     <div class="grid gap-3.5 lg:grid-cols-2">
       <Card>
-        <CardHeader><CardTitle class="text-base">机器状态分布</CardTitle></CardHeader>
+        <CardHeader><CardTitle class="text-base">{{ t('dashboard.chartState') }}</CardTitle></CardHeader>
         <CardContent>
           <div ref="chartEl" class="h-[280px] w-full" />
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle class="text-base">进行中的任务</CardTitle></CardHeader>
+        <CardHeader><CardTitle class="text-base">{{ t('dashboard.chartRunningJobs') }}</CardTitle></CardHeader>
         <CardContent>
           <div class="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="w-20">类型</TableHead>
-                  <TableHead class="w-24">状态</TableHead>
-                  <TableHead class="w-24">目标机器</TableHead>
-                  <TableHead class="min-w-[140px]">创建时间</TableHead>
+                  <TableHead class="w-20">{{ t('dashboard.colType') }}</TableHead>
+                  <TableHead class="w-24">{{ t('dashboard.colState') }}</TableHead>
+                  <TableHead class="w-24">{{ t('dashboard.colTarget') }}</TableHead>
+                  <TableHead class="min-w-[140px]">{{ t('dashboard.colCreatedAt') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -313,7 +309,7 @@ const STATS = computed(() => [
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="(runningJobsQuery.data.value?.items ?? []).length === 0" description="当前没有进行中的任务" />
+            <EmptyState v-if="(runningJobsQuery.data.value?.items ?? []).length === 0" :description="t('dashboard.noRunningJobs')" />
           </div>
         </CardContent>
       </Card>
