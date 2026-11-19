@@ -1897,12 +1897,12 @@ const HEALTH_GATE_DESC: Record<string, string> = {
             agent 通路 {{ conn.capabilities?.windows_agent_installer ? '可用' : '不可用' }}。
           </p>
         </div>
-      </div>
 
-      <div class="mt-5 flex items-center justify-between">
-        <Button variant="outline" @click="back">上一步</Button>
-        <Button @click="next">下一步：试算预览</Button>
-      </div>
+        <div class="mt-5 flex items-center justify-between">
+          <Button variant="outline" @click="back">上一步</Button>
+          <Button @click="next">下一步：试算预览</Button>
+        </div>
+      </CardContent>
     </Card>
 
     <!-- Step 3 -->

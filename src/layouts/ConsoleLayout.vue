@@ -227,7 +227,7 @@ async function copyPassword() {
         <Alert class="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
           <AlertDescription>该密码不会再次显示，请立即保存。</AlertDescription>
         </Alert>
-        <div class="mono break-all rounded-md bg-muted px-3 py-2.5 text-sm">
+        <div class="break-all rounded-md bg-muted px-3 py-2.5 font-mono text-sm">
           {{ pwInfo?.password }}
         </div>
         <p class="text-xs text-muted-foreground">任务 {{ pwInfo?.taskId }}</p>

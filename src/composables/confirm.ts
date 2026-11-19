@@ -1,9 +1,9 @@
 /**
- * 命令式确认弹窗（替代 Element Plus 的 ElMessageBox.confirm）。
+ * 命令式确认弹窗（全局 AlertDialog 封装）。
  *
  * ConfirmDialogHost 在 ConsoleLayout 挂载时注册处理器；业务侧
  * `await confirm({ title, description, destructive })` 返回 Promise<boolean>，
- * 迁移 EP 调用点时只改 import 与弹窗参数，调用形态不变。
+ * 调用形态与原生 confirm 一致。
  */
 export interface ConfirmOptions {
   title: string

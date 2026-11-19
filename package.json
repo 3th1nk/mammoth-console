@@ -12,7 +12,6 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@element-plus/icons-vue": "^2.3.1",
     "@lucide/vue": "^1.75.0",
     "@tanstack/vue-query": "^5.66.0",
     "@vueuse/core": "^12.8.2",
@@ -22,7 +21,6 @@
     "cn": "^0.5.2",
     "dayjs": "^1.11.13",
     "echarts": "^5.6.0",
-    "element-plus": "^2.9.3",
     "lucide-vue-next": "^0.577.0",
     "openapi-fetch": "^0.14.0",
     "pinia": "^3.0.1",
