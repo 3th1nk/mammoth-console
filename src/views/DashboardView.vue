@@ -18,7 +18,7 @@ import StateBadge from '@/components/StateBadge.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -229,9 +229,11 @@ const STATS = computed(() => [
     </Alert>
 
     <Card v-if="showOnboarding" class="onboarding">
-      <CardHeader class="flex-row items-center justify-between">
+      <CardHeader>
         <CardTitle class="text-base">开箱向导 · 五步到第一台装好的机器</CardTitle>
-        <Button variant="ghost" size="sm" @click="dismissOnboarding">跳过引导</Button>
+        <CardAction>
+          <Button variant="ghost" size="sm" @click="dismissOnboarding">跳过引导</Button>
+        </CardAction>
       </CardHeader>
       <CardContent class="flex flex-col gap-2.5">
         <div

@@ -13,7 +13,7 @@ import { resolveDistroKey, familyLabel, type DistroFamilyKey } from '@/utils/dis
 import { formatVersion } from '@/utils/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import DescriptionList from '@/components/DescriptionList.vue'
 import DescriptionItem from '@/components/DescriptionItem.vue'
@@ -229,11 +229,13 @@ const configRows = computed<ConfigRow[]>(() => {
     </Card>
 
     <Card>
-      <CardHeader class="flex-row items-center justify-between">
+      <CardHeader>
         <CardTitle class="text-base">当前生效配置<span class="ml-2 text-xs font-normal text-muted-foreground">只读快照，敏感项已脱敏</span></CardTitle>
-        <Button variant="ghost" size="sm" :disabled="cfgQuery.isFetching.value" @click="() => cfgQuery.refetch()">
-          <RefreshCcw class="size-4" /> 刷新
-        </Button>
+        <CardAction>
+          <Button variant="ghost" size="sm" :disabled="cfgQuery.isFetching.value" @click="() => cfgQuery.refetch()">
+            <RefreshCcw class="size-4" /> 刷新
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <Collapsible>

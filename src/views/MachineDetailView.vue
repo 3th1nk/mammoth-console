@@ -26,7 +26,7 @@ import DescriptionItem from '@/components/DescriptionItem.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -419,11 +419,13 @@ const title = computed(() => {
       </Card>
 
       <Card v-if="!headless">
-        <CardHeader class="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle class="text-base">硬件健康（BMC 实时读）</CardTitle>
-          <Button variant="outline" size="sm" :disabled="healthQuery.isFetching.value" @click="healthQuery.refetch()">
-            <RefreshCcw class="size-4" /> 重新读取
-          </Button>
+          <CardAction>
+            <Button variant="outline" size="sm" :disabled="healthQuery.isFetching.value" @click="healthQuery.refetch()">
+              <RefreshCcw class="size-4" /> 重新读取
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent class="flex flex-col gap-3">
           <Alert v-if="healthQuery.error.value" class="border-amber-500/40 bg-amber-500/5">
@@ -471,11 +473,13 @@ const title = computed(() => {
       </Card>
 
       <Card v-if="!headless">
-        <CardHeader class="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle class="text-base">SEL 硬件日志（最近 500 条）</CardTitle>
-          <Button variant="outline" size="sm" :disabled="selQuery.isFetching.value" @click="selQuery.refetch()">
-            <RefreshCcw class="size-4" /> 重新读取
-          </Button>
+          <CardAction>
+            <Button variant="outline" size="sm" :disabled="selQuery.isFetching.value" @click="selQuery.refetch()">
+              <RefreshCcw class="size-4" /> 重新读取
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent class="flex flex-col gap-3">
           <Alert v-if="selQuery.error.value" class="border-amber-500/40 bg-amber-500/5">
@@ -537,24 +541,26 @@ const title = computed(() => {
       <!-- BIOS 基线与漂移(roadmap 下一阶段 13):赋值入口就在本卡片。
            headless 无 BMC 活读,漂移比对无从谈起——整卡隐藏 -->
       <Card v-if="!headless">
-        <CardHeader class="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle class="text-base">BIOS 基线与漂移</CardTitle>
-          <TooltipProvider :delay-duration="200">
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="!driftEnabled"
-                  :loading="driftReading"
-                  @click="driftRead()"
-                >
-                  <RefreshCcw class="size-4" /> 读取漂移
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>实时读取 BMC 属性表并逐项比对基线，可能需要数十秒</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <CardAction>
+            <TooltipProvider :delay-duration="200">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="!driftEnabled"
+                    :loading="driftReading"
+                    @click="driftRead()"
+                  >
+                    <RefreshCcw class="size-4" /> 读取漂移
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>实时读取 BMC 属性表并逐项比对基线，可能需要数十秒</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </CardAction>
         </CardHeader>
         <CardContent class="flex flex-col gap-3">
           <div class="flex flex-wrap items-center gap-2.5">
@@ -626,11 +632,13 @@ const title = computed(() => {
 
       <!-- 装后验收报告（roadmap 下一阶段 12）：有报告才显示 -->
       <Card v-if="acceptance">
-        <CardHeader class="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle class="text-base">装后验收报告</CardTitle>
-          <Badge variant="outline" class="rounded-md font-medium" :style="verdictBadge(acceptance.verdict).style">
-            {{ verdictBadge(acceptance.verdict).label }}
-          </Badge>
+          <CardAction>
+            <Badge variant="outline" class="rounded-md font-medium" :style="verdictBadge(acceptance.verdict).style">
+              {{ verdictBadge(acceptance.verdict).label }}
+            </Badge>
+          </CardAction>
         </CardHeader>
         <CardContent class="flex flex-col gap-3">
           <div class="overflow-hidden rounded-lg border">
@@ -668,9 +676,11 @@ const title = computed(() => {
 
       <!-- 退役证据（roadmap 下一阶段 18）：有报告才显示 -->
       <Card v-if="dcReport">
-        <CardHeader class="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle class="text-base">退役证据</CardTitle>
-          <Badge variant="outline" class="rounded-md font-medium">已退役资产</Badge>
+          <CardAction>
+            <Badge variant="outline" class="rounded-md font-medium">已退役资产</Badge>
+          </CardAction>
         </CardHeader>
         <CardContent>
           <pre class="max-h-[420px] overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-muted/50 p-4 font-mono text-xs leading-relaxed">{{ JSON.stringify(dcReport, null, 2) }}</pre>
