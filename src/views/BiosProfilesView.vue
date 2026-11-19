@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ChevronDown, ChevronRight, LoaderCircle, Plus, RefreshCcw, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { biosProfilesKey } from '@/api/queryKeys'
@@ -10,7 +11,7 @@ import { confirm } from '@/composables/confirm'
 import type { components } from '@/api/types.gen'
 import { formatTime } from '@/utils/format'
 import { uuid } from '@/utils/uuid'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -26,6 +27,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 import {
   Table,
   TableBody,
@@ -53,6 +55,8 @@ interface AttrRow {
   value: string
   type: AttrType
 }
+
+const { t } = useI18n()
 
 function emptyRow(): AttrRow {
   return { key: '', value: '', type: 'auto' }
@@ -130,35 +134,35 @@ function openCreate() {
 // 校验函数与模式解耦:radio 的 v-model 先于 @change 更新,切换瞬间读
 // attrsError 会走错分支(拿旧数据源套新模式),所以这里按数据源直接校验。
 function jsonTextError(text: string): string {
-  if (!text.trim()) return '属性不能为空'
+  if (!text.trim()) return t('biosProfiles.errEmptyAttrs')
   try {
     const v = JSON.parse(text)
-    if (typeof v !== 'object' || v === null || Array.isArray(v)) return '属性必须是 JSON 对象'
-    if (Object.keys(v).length === 0) return '至少声明一个属性'
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return t('biosProfiles.errNotObject')
+    if (Object.keys(v).length === 0) return t('biosProfiles.errNoAttrs')
     return ''
   } catch (e) {
-    return `JSON 解析失败：${(e as Error).message}`
+    return t('biosProfiles.errParse', { msg: (e as Error).message })
   }
 }
 
 function tableRowsError(rows: AttrRow[]): string {
   const filled = rows.filter((r) => r.key.trim() !== '' || r.value.trim() !== '')
-  if (filled.length === 0) return '至少声明一个属性'
+  if (filled.length === 0) return t('biosProfiles.errNoAttrs')
   const seen = new Set<string>()
   for (const [i, row] of filled.entries()) {
     const key = row.key.trim()
     const raw = row.value.trim()
-    if (!key) return `第 ${i + 1} 行属性名为空`
-    if (!raw && row.type !== 'string') return `属性 ${key} 的值为空`
-    if (seen.has(key)) return `属性名重复：${key}`
+    if (!key) return t('biosProfiles.errRowKeyEmpty', { i: i + 1 })
+    if (!raw && row.type !== 'string') return t('biosProfiles.errRowValueEmpty', { key })
+    if (seen.has(key)) return t('biosProfiles.errDupKey', { key })
     seen.add(key)
-    if (row.type === 'number' && !Number.isFinite(Number(raw))) return `属性 ${key} 的值不是数字`
-    if (row.type === 'boolean' && !/^(true|false)$/i.test(raw)) return `属性 ${key} 的值必须是 true/false`
+    if (row.type === 'number' && !Number.isFinite(Number(raw))) return t('biosProfiles.errNotNumber', { key })
+    if (row.type === 'boolean' && !/^(true|false)$/i.test(raw)) return t('biosProfiles.errNotBool', { key })
     if (row.type === 'json') {
       try {
         JSON.parse(row.value)
       } catch {
-        return `属性 ${key} 的 JSON 值解析失败`
+        return t('biosProfiles.errJsonParse', { key })
       }
     }
   }
@@ -178,7 +182,7 @@ function onModeChange(m: 'table' | 'json') {
   if (m === 'json') {
     const err = tableRowsError(attrRows.value)
     if (err) {
-      toast.warning(`表格校验未通过（${err}），修正后再切换`)
+      toast.warning(t('biosProfiles.modeSwitchTableBlocked', { err }))
       attrMode.value = 'table'
       return
     }
@@ -186,10 +190,10 @@ function onModeChange(m: 'table' | 'json') {
   } else if (m === 'table') {
     try {
       const v = JSON.parse(newAttrsText.value)
-      if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('属性必须是 JSON 对象')
+      if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error(t('biosProfiles.errNotObject'))
       attrRows.value = jsonToRows(v as Record<string, unknown>)
     } catch (e) {
-      toast.warning(`JSON 无效（${(e as Error).message}），修正后再切换`)
+      toast.warning(t('biosProfiles.modeSwitchJsonBlocked', { err: (e as Error).message }))
       attrMode.value = 'json'
     }
   }
@@ -204,7 +208,7 @@ function applyCopy(id: string) {
   if (attrMode.value === 'json') newAttrsText.value = JSON.stringify(attrs, null, 2)
   else attrRows.value = jsonToRows(attrs)
   copyFrom.value = ''
-  toast.success(`已载入「${p.name}」的属性`)
+  toast.success(t('biosProfiles.loadedFrom', { name: p.name }))
 }
 
 async function createProfile() {
@@ -220,7 +224,7 @@ async function createProfile() {
       header: { 'Idempotency-Key': uuid() },
       body: { name: newName.value, attributes: attrs as never },
     }))
-    toast.success('基线已创建')
+    toast.success(t('biosProfiles.created'))
     createVisible.value = false
     resetForm()
     void qc.invalidateQueries({ queryKey: biosProfilesKey })
@@ -233,15 +237,15 @@ async function createProfile() {
 
 async function deleteProfile(p: BiosProfile) {
   const ok = await confirm({
-    title: '删除基线',
-    description: `删除基线「${p.name}」？机器赋值将自动清除（不影响机器本身）。`,
-    confirmText: '删除',
+    title: t('biosProfiles.deleteConfirmTitle'),
+    description: t('biosProfiles.deleteConfirmDesc', { name: p.name }),
+    confirmText: t('common.delete'),
     destructive: true,
   })
   if (!ok) return
   try {
     await unwrap(await getClient().DELETE('/api/v1/bios-profiles/{id}', { params: { path: { id: p.id } } }))
-    toast.success('基线已删除')
+    toast.success(t('biosProfiles.deleted'))
     void qc.invalidateQueries({ queryKey: biosProfilesKey })
   } catch (e) {
     toast.error(errorMessage(e))
@@ -264,11 +268,11 @@ function fmtAttrs(p: BiosProfile): string {
 }
 
 const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: 'string', label: '字符串' },
-  { value: 'number', label: '数字' },
-  { value: 'boolean', label: '布尔' },
-  { value: 'json', label: 'JSON' },
+  { value: 'auto', label: t('biosProfiles.typeAuto') },
+  { value: 'string', label: t('biosProfiles.typeString') },
+  { value: 'number', label: t('biosProfiles.typeNumber') },
+  { value: 'boolean', label: t('biosProfiles.typeBoolean') },
+  { value: 'json', label: t('biosProfiles.typeJson') },
 ]
 </script>
 
@@ -276,22 +280,19 @@ const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
   <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">BIOS 基线模板</h2>
-        <p class="text-sm text-muted-foreground">命名式属性集 · 共 {{ profiles.length }} 条</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{ t('biosProfiles.title') }}</h2>
+        <p class="text-sm text-muted-foreground">{{ t('biosProfiles.subtitle', { n: profiles.length }) }}</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button size="sm" @click="openCreate"><Plus class="size-4" /> 新建基线</Button>
+        <Button size="sm" @click="openCreate"><Plus class="size-4" /> {{ t('biosProfiles.create') }}</Button>
         <Button variant="outline" size="sm" @click="listQuery.refetch()">
-          <RefreshCcw class="size-4" /> 刷新
+          <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
         </Button>
       </div>
     </div>
 
     <Alert class="border-blue-500/30 bg-blue-500/5">
-      <AlertDescription>
-        命名式 BIOS 属性集：漂移巡检的参照与批量下发的载荷源。属性名用厂商自己的名字与 JSON
-        类型；机器赋值在机器详情的「BIOS 基线」卡片。
-      </AlertDescription>
+      <AlertDescription>{{ t('biosProfiles.info') }}</AlertDescription>
     </Alert>
 
     <Alert v-if="listQuery.error.value" variant="destructive">
@@ -306,10 +307,10 @@ const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
             <TableHeader>
               <TableRow class="bg-muted/50 hover:bg-muted/50">
                 <TableHead class="w-10" />
-                <TableHead class="min-w-[200px]">名称</TableHead>
-                <TableHead class="w-24">属性数</TableHead>
-                <TableHead class="w-44">创建时间</TableHead>
-                <TableHead class="w-24 text-right">操作</TableHead>
+                <TableHead class="min-w-[200px]">{{ t('biosProfiles.colName') }}</TableHead>
+                <TableHead class="w-24">{{ t('biosProfiles.colAttrs') }}</TableHead>
+                <TableHead class="w-44">{{ t('biosProfiles.colCreatedAt') }}</TableHead>
+                <TableHead class="w-24 text-right">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -334,7 +335,7 @@ const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
                       class="h-8 text-destructive hover:text-destructive"
                       @click.stop="deleteProfile(row)"
                     >
-                      <Trash2 class="size-4" /> 删除
+                      <Trash2 class="size-4" /> {{ t('common.delete') }}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -346,75 +347,70 @@ const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
               </template>
             </TableBody>
           </Table>
-          <EmptyState v-if="profiles.length === 0" description="尚无基线模板">
+          <EmptyState v-if="profiles.length === 0" :description="t('biosProfiles.attrsEmpty')">
             <p class="max-w-[440px] text-xs leading-relaxed text-muted-foreground">
-              基线是命名式的 BIOS 属性集合，漂移巡检以它为参照、批量下发以它为载荷源；
-              创建后可在机器详情的「BIOS 基线」卡片赋给机器。
+              {{ t('biosProfiles.attrsEmptyHint') }}
             </p>
-            <Button size="sm" class="mt-1" @click="openCreate"><Plus class="size-4" /> 新建第一个基线</Button>
+            <Button size="sm" class="mt-1" @click="openCreate"><Plus class="size-4" /> {{ t('biosProfiles.createFirst') }}</Button>
           </EmptyState>
         </div>
       </CardContent>
     </Card>
 
     <Dialog :open="createVisible" @update:open="(v: boolean) => (createVisible = v)">
-      <DialogContent class="sm:max-w-[640px]">
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>新建 BIOS 基线</DialogTitle>
-          <DialogDescription>属性名用厂商自己的名字与 JSON 类型。</DialogDescription>
+          <DialogTitle>{{ t('biosProfiles.createTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('biosProfiles.createDesc') }}</DialogDescription>
         </DialogHeader>
         <form class="grid gap-4" @submit.prevent="createProfile">
           <div class="grid gap-1.5">
-            <Label for="bp-name">名称</Label>
-            <Input id="bp-name" v-model="newName" placeholder="如 baseline-2288H-prod" />
+            <Label for="bp-name">{{ t('biosProfiles.nameLabel') }}</Label>
+            <Input id="bp-name" v-model="newName" :placeholder="t('biosProfiles.namePlaceholder')" />
           </div>
           <div v-if="profiles.length" class="grid gap-1.5">
-            <Label>从现有基线复制（可选）</Label>
+            <Label>{{ t('biosProfiles.copyFrom') }}</Label>
             <Select
               :model-value="copyFrom || 'none'"
               @update:model-value="(v: unknown) => applyCopy(String(v))"
             >
               <SelectTrigger>
-                <SelectValue placeholder="选择基线，载入其属性后微调" />
+                <SelectValue :placeholder="t('biosProfiles.copyPlaceholder')" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">不复制</SelectItem>
+                <SelectItem value="none">{{ t('biosProfiles.copyNone') }}</SelectItem>
                 <SelectItem v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div class="grid gap-1.5">
-            <Label>属性编辑方式</Label>
-            <div class="flex w-fit rounded-md border p-0.5">
-              <button
-                v-for="m in ['table', 'json'] as const"
-                :key="m"
-                type="button"
-                class="rounded-sm px-3 py-1 text-sm transition-colors"
-                :class="attrMode === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                @click="onModeChange(m)"
-              >
-                {{ m === 'table' ? '表格' : 'JSON' }}
-              </button>
-            </div>
+            <Label>{{ t('biosProfiles.editMode') }}</Label>
+            <SegmentedControl
+              :model-value="attrMode"
+              :options="[
+                { value: 'table', label: t('biosProfiles.modeTable') },
+                { value: 'json', label: t('biosProfiles.modeJson') },
+              ]"
+              @update:model-value="(v: string) => onModeChange(v as 'table' | 'json')"
+            />
           </div>
           <div class="grid gap-1.5">
-            <Label>{{ attrMode === 'table' ? '属性（厂商属性名 + 带类型值）' : '属性 JSON' }}</Label>
+            <Label>{{ attrMode === 'table' ? t('biosProfiles.attrsTableLabel') : t('biosProfiles.attrsJsonLabel') }}</Label>
             <div v-if="attrMode === 'table'" class="grid gap-2">
               <div v-for="(row, i) in attrRows" :key="i" class="flex items-start gap-2">
-                <Input v-model="row.key" placeholder="属性名" class="flex-1 font-mono" />
+                <Input v-model="row.key" :placeholder="t('biosProfiles.attrKeyPlaceholder')" class="flex-1 font-mono" />
                 <Textarea
                   v-if="row.type === 'json'"
                   v-model="row.value"
                   :rows="2"
-                  placeholder="嵌套 JSON 值"
+                  :placeholder="t('biosProfiles.attrJsonPlaceholder')"
                   class="flex-1 font-mono"
                 />
-                <Input v-else v-model="row.value" placeholder="值" class="flex-1 font-mono" />
+                <Input v-else v-model="row.value" :placeholder="t('biosProfiles.attrValuePlaceholder')" class="flex-1 font-mono" />
                 <Select v-model="row.type" class="w-24 shrink-0">
                   <SelectTrigger class="w-24"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem v-for="t in ATTR_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</SelectItem>
+                    <SelectItem v-for="x in ATTR_TYPE_OPTIONS" :key="x.value" :value="x.value">{{ x.label }}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
@@ -428,19 +424,17 @@ const ATTR_TYPE_OPTIONS: { value: AttrType; label: string }[] = [
                 </Button>
               </div>
               <Button variant="ghost" size="sm" class="w-fit text-primary" @click="addRow">
-                <Plus class="size-4" /> 添加属性
+                <Plus class="size-4" /> {{ t('biosProfiles.addAttr') }}
               </Button>
             </div>
             <Textarea v-else v-model="newAttrsText" :rows="10" class="font-mono" />
             <p v-if="attrsError" class="text-xs text-destructive">{{ attrsError }}</p>
-            <p v-else-if="attrMode === 'table'" class="text-xs text-muted-foreground">
-              自动类型按值推断：true/false → 布尔、纯数字 → 数字、其余 → 字符串；嵌套值选 JSON 类型。
-            </p>
+            <p v-else-if="attrMode === 'table'" class="text-xs text-muted-foreground">{{ t('biosProfiles.autoHint') }}</p>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" @click="createVisible = false">取消</Button>
+            <Button type="button" variant="outline" @click="createVisible = false">{{ t('common.cancel') }}</Button>
             <Button type="submit" :disabled="creating || !!attrsError || !newName">
-              <LoaderCircle v-if="creating" class="size-4 animate-spin" /> 创建
+              <LoaderCircle v-if="creating" class="size-4 animate-spin" /> {{ t('common.create') }}
             </Button>
           </DialogFooter>
         </form>
