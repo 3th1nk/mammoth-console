@@ -179,22 +179,20 @@ function addRow() {
 }
 
 function onModeChange(m: 'table' | 'json') {
+  if (m === attrMode.value) return
   if (m === 'json') {
-    const err = tableRowsError(attrRows.value)
-    if (err) {
-      toast.warning(t('biosProfiles.modeSwitchTableBlocked', { err }))
-      attrMode.value = 'table'
-      return
-    }
+    // 表格 → JSON 无条件切换:空行/缺属性等回显在下方错误提示里引导修正,
+    // 不再回弹(回弹会让用户以为切换坏了)
     newAttrsText.value = JSON.stringify(rowsToAttrs(attrRows.value), null, 2)
-  } else if (m === 'table') {
+    attrMode.value = 'json'
+  } else {
     try {
       const v = JSON.parse(newAttrsText.value)
       if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error(t('biosProfiles.errNotObject'))
       attrRows.value = jsonToRows(v as Record<string, unknown>)
+      attrMode.value = 'table'
     } catch (e) {
       toast.warning(t('biosProfiles.modeSwitchJsonBlocked', { err: (e as Error).message }))
-      attrMode.value = 'json'
     }
   }
 }
@@ -414,6 +412,7 @@ const ATTR_TYPE_OPTIONS = computed<{ value: AttrType; label: string }[]>(() => [
                   </SelectContent>
                 </Select>
                 <Button
+                  type="button"
                   variant="ghost"
                   size="icon"
                   class="size-9 shrink-0 text-muted-foreground hover:text-destructive"
@@ -423,7 +422,7 @@ const ATTR_TYPE_OPTIONS = computed<{ value: AttrType; label: string }[]>(() => [
                   <Trash2 class="size-4" />
                 </Button>
               </div>
-              <Button variant="ghost" size="sm" class="w-fit text-primary" @click="addRow">
+              <Button type="button" variant="ghost" size="sm" class="w-fit text-primary" @click="addRow">
                 <Plus class="size-4" /> {{ t('biosProfiles.addAttr') }}
               </Button>
             </div>

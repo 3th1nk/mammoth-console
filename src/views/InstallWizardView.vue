@@ -1955,8 +1955,8 @@ const HEALTH_GATE_DESC = computed<Record<string, string>>(() => ({
 
     <!-- Step 4 -->
     <Card v-else-if="step === 4">
-      <CardContent class="max-w-[560px]">
-        <div class="grid gap-5">
+      <CardContent class="flex flex-col gap-5">
+        <div class="grid max-w-[560px] gap-5">
           <div class="grid gap-1.5">
             <Label for="policy-concurrency">{{ t('wizard.concurrency') }}</Label>
             <NumberInput id="policy-concurrency" v-model="policy.concurrency" :min="1" :max="100" class="w-32" />
@@ -1988,7 +1988,7 @@ const HEALTH_GATE_DESC = computed<Record<string, string>>(() => ({
             <p class="text-xs leading-relaxed text-muted-foreground">{{ HEALTH_GATE_DESC[policy.health_gate] }}</p>
           </div>
         </div>
-        <div class="mt-5 flex items-center justify-between">
+        <div class="mt-1 flex items-center justify-between">
           <Button variant="outline" @click="back">{{ t('wizard.prev') }}</Button>
           <Button :disabled="submittingJob" @click="submit">
             <LoaderCircle v-if="submittingJob" class="size-4 animate-spin" />
