@@ -170,7 +170,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <DialogDescription>搜索机器、任务或跳转页面</DialogDescription>
       </DialogHeader>
       <Command class="**:data-[slot=command-input-wrapper]:h-12">
-        <CommandInput v-model="term" placeholder="搜索机器（序列号 / BMC / 厂商 / 标签）或任务 ID…" />
+        <!-- CommandInput 内部硬绑 filterState.search(外层 v-model 会被覆盖):
+             异步搜索经原生 input 事件同步 term -->
+        <CommandInput
+          placeholder="搜索机器（序列号 / BMC / 厂商 / 标签）或任务 ID…"
+          @input="(e: Event) => (term = (e.target as HTMLInputElement).value)"
+        />
         <CommandList class="max-h-[380px] py-1.5">
           <CommandEmpty>无匹配结果</CommandEmpty>
           <template v-for="(group, gi) in groups" :key="gi">

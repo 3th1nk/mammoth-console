@@ -70,6 +70,17 @@ watch(() => filterState.search, () => {
   filterItems()
 })
 
+// 本地补丁(上游 shadcn-vue 缺口,cmdk-React 无此问题):异步服务端搜索的
+// 结果条目在过滤跑完之后才 mount 注册——此后 filterItems 不再被触发,
+// filtered.groups 永不含新分组 → 组被 display:none、计数停在 0(空态卡
+// 死)。条目/分组的注册量变化时重跑一次过滤即可对齐 React 行为。
+watch(() => allItems.value.size, () => {
+  filterItems()
+})
+watch(() => allGroups.value.size, () => {
+  filterItems()
+})
+
 provideCommandContext({
   allItems,
   allGroups,

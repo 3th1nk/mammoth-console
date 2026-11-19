@@ -309,7 +309,7 @@ function onActionSubmitted() {
           <Table class="min-w-[1080px]">
             <TableHeader>
               <TableRow class="bg-muted/50 hover:bg-muted/50">
-                <TableHead data-sel-col class="w-10" @click.stop>
+                <TableHead data-sel-col class="sticky left-0 z-10 w-10 bg-inherit" @click.stop>
                   <Checkbox
                     :model-value="allSelected"
                     aria-label="全选"
@@ -326,12 +326,12 @@ function onActionSubmitted() {
                 <TableHead class="w-24">电源</TableHead>
                 <TableHead class="min-w-[110px]">标签</TableHead>
                 <TableHead class="w-40">注册时间</TableHead>
-                <TableHead class="w-32 text-right">操作</TableHead>
+                <TableHead class="sticky right-0 z-10 w-32 bg-card text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="row in rows" :key="row.id" class="cursor-pointer" @click="openDetail(row, $event)">
-                <TableCell data-sel-col class="pr-0" @click.stop>
+              <TableRow v-for="row in rows" :key="row.id" class="group cursor-pointer" @click="openDetail(row, $event)">
+                <TableCell data-sel-col class="sticky left-0 z-10 bg-card pr-0 group-hover:bg-muted/50" @click.stop>
                   <Checkbox
                     :model-value="selectedIds.has(row.id)"
                     :aria-label="`选择 ${row.id}`"
@@ -374,7 +374,7 @@ function onActionSubmitted() {
                   </div>
                 </TableCell>
                 <TableCell class="text-muted-foreground">{{ formatTime(row.created_at) }}</TableCell>
-                <TableCell class="text-right">
+                <TableCell class="sticky right-0 z-10 bg-card text-right group-hover:bg-muted/50">
                   <div class="inline-flex justify-end" @click.stop>
                     <MachineActions
                       :machine-id="row.id"

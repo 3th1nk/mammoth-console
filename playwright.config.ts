@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'bash e2e/engine.sh',
-      url: 'http://127.0.0.1:8081/healthz',
+      url: 'http://127.0.0.1:8081/readyz',
       reuseExistingServer: true,
       timeout: 120_000,
     },
