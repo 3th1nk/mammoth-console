@@ -308,7 +308,7 @@ function onActionSubmitted() {
         <div v-else class="overflow-x-auto overflow-y-hidden rounded-lg border">
           <Table class="min-w-[1080px]">
             <TableHeader>
-              <TableRow class="bg-muted/50 hover:bg-muted/50">
+              <TableRow class="bg-muted hover:bg-muted">
                 <TableHead data-sel-col class="sticky left-0 z-10 w-10 bg-inherit" @click.stop>
                   <Checkbox
                     :model-value="allSelected"
@@ -326,12 +326,14 @@ function onActionSubmitted() {
                 <TableHead class="w-24">电源</TableHead>
                 <TableHead class="min-w-[110px]">标签</TableHead>
                 <TableHead class="w-40">注册时间</TableHead>
-                <TableHead class="sticky right-0 z-10 w-32 bg-card text-right">操作</TableHead>
+                <TableHead class="sticky right-0 z-10 w-32 bg-inherit text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="row in rows" :key="row.id" class="group cursor-pointer" @click="openDetail(row, $event)">
-                <TableCell data-sel-col class="sticky left-0 z-10 bg-card pr-0 group-hover:bg-muted/50" @click.stop>
+              <!-- 行背景不透明(bg-card/hover:bg-muted):sticky 列 bg-inherit 才能
+                   盖住横向滚过的其他列内容——半透明背景会透出下层 -->
+              <TableRow v-for="row in rows" :key="row.id" class="group cursor-pointer bg-card hover:bg-muted" @click="openDetail(row, $event)">
+                <TableCell data-sel-col class="sticky left-0 z-10 bg-inherit pr-0" @click.stop>
                   <Checkbox
                     :model-value="selectedIds.has(row.id)"
                     :aria-label="`选择 ${row.id}`"
@@ -374,7 +376,7 @@ function onActionSubmitted() {
                   </div>
                 </TableCell>
                 <TableCell class="text-muted-foreground">{{ formatTime(row.created_at) }}</TableCell>
-                <TableCell class="sticky right-0 z-10 bg-card text-right group-hover:bg-muted/50">
+                <TableCell class="sticky right-0 z-10 bg-inherit text-right">
                   <div class="inline-flex justify-end" @click.stop>
                     <MachineActions
                       :machine-id="row.id"
