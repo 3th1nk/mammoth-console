@@ -32,10 +32,21 @@ test.describe('Webhook 订阅', () => {
     await connect(page)
     await page.goto('/events')
     await page.getByRole('tab', { name: 'Webhooks 订阅' }).click()
+
+    // 先清历史残骸(旧轮次失败遗留的 e2e-hook-*),避免行匹配歧义
+    while (await page.locator('[data-slot=table-row]').filter({ hasText: 'e2e-hook-' }).count() > 0) {
+      await page.locator('[data-slot=table-row]').filter({ hasText: 'e2e-hook-' }).first().getByRole('button', { name: '删除' }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: '删除' }).click()
+      await page.waitForTimeout(500)
+    }
+
+    // URL 带每轮唯一后缀:与机器同款幂等策略,残留不再让匹配歧义
+    const SUF = Date.now().toString(36)
+    const URL_ = `http://127.0.0.1:9999/e2e-hook-${SUF}`
     await page.getByRole('button', { name: '新建订阅' }).click()
 
     const dlg = page.locator('[data-slot=dialog-content]').filter({ hasText: '新建 webhook 订阅' })
-    await dlg.getByPlaceholder(/ops\.example\.com/).fill('http://127.0.0.1:9999/e2e-hook')
+    await dlg.getByPlaceholder(/ops\.example\.com/).fill(URL_)
 
     // 类型按资源分组 checkbox:勾选「机器注册」
     await dlg.locator('label').filter({ hasText: '机器注册' }).click()
@@ -47,7 +58,7 @@ test.describe('Webhook 订阅', () => {
     await page.getByRole('button', { name: '我已保存' }).click()
 
     // 列表行:中文 tag 展示
-    const row = page.locator('[data-slot=table-row]').filter({ hasText: 'e2e-hook' })
+    const row = page.locator('[data-slot=table-row]').filter({ hasText: `e2e-hook-${SUF}` })
     await expect(row).toContainText('机器注册')
 
     // 清理:确认弹窗内点「删除」
