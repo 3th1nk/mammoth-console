@@ -26,7 +26,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -317,7 +316,7 @@ function submitMedia() {
           {{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}
         </DropdownMenuItem>
         <template v-if="!headless">
-          <DropdownMenuLabel class="text-xs text-muted-foreground">电源</DropdownMenuLabel>
+          <DropdownMenuSeparator />
           <DropdownMenuItem @click="onCommand('power_on')">开机</DropdownMenuItem>
           <DropdownMenuItem @click="onCommand('soft_off')">软关机</DropdownMenuItem>
           <DropdownMenuItem @click="onCommand('power_off')">硬关机</DropdownMenuItem>
