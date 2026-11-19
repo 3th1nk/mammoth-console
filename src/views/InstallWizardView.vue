@@ -6,6 +6,7 @@ import { LoaderCircle, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import ComboInput from '@/components/ComboInput.vue'
 import NumberInput from '@/components/NumberInput.vue'
+import SegmentedControl from '@/components/SegmentedControl.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,7 +14,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -1283,13 +1283,13 @@ const HEALTH_GATE_DESC: Record<string, string> = {
       <CardContent class="flex flex-col gap-6">
         <div class="grid gap-1.5">
           <Label>镜像</Label>
-          <RadioGroup
+          <SegmentedControl
             v-model="imageMode"
-            class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-          >
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="library" /> 从镜像库选择（推荐）</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="inline" /> 直接填写镜像地址</Label>
-          </RadioGroup>
+            :options="[
+              { value: 'library', label: '从镜像库选择（推荐）' },
+              { value: 'inline', label: '直接填写镜像地址' },
+            ]"
+          />
           <p v-if="isDD" class="text-xs leading-relaxed text-muted-foreground">
             镜像直写：整盘镜像（自带分区表/引导器）由 agent 运行时流式写入目标盘，
             写盘流按未压缩镜像逐字节 SHA256 校验；首启意图（主机名/网络/凭证）随 NoCloud seed 生效。
@@ -1369,22 +1369,15 @@ const HEALTH_GATE_DESC: Record<string, string> = {
             单目标盘（最大盘）整盘写入——镜像自带分区表与引导器，引擎不再声明分区；
             LVM/自定义分区不适用于本通路。
           </p>
-          <RadioGroup
+          <SegmentedControl
             v-else
             v-model="storageMode"
             :disabled="isWindows"
-            class="flex flex-wrap gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs disabled:opacity-60"
-          >
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal">
-              <RadioGroupItem value="standard" /> {{ isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' }}
-            </Label>
-            <Label v-if="!isWindows" class="flex cursor-pointer items-center gap-1.5 font-normal">
-              <RadioGroupItem value="custom" /> 自定义分区
-            </Label>
-            <Label v-if="!isWindows" class="flex cursor-pointer items-center gap-1.5 font-normal">
-              <RadioGroupItem value="lvm" /> LVM 卷组
-            </Label>
-          </RadioGroup>
+            :options="[
+              { value: 'standard', label: isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' },
+              ...(isWindows ? [] : [{ value: 'custom', label: '自定义分区' }, { value: 'lvm', label: 'LVM 卷组' }]),
+            ]"
+          />
           <p v-if="storageMode === 'standard' && !isWindows" class="text-xs leading-relaxed text-muted-foreground">
             标准分区 = 最大盘全盘擦除：512M EFI + 4G swap + 其余 xfs 挂 /。
           </p>
@@ -1408,13 +1401,13 @@ const HEALTH_GATE_DESC: Record<string, string> = {
             <div v-for="(g, gi) in vgs" :key="gi" class="rounded-lg border p-3">
               <div class="mb-2.5 flex items-center justify-between gap-2">
                 <Input v-model="g.name" placeholder="卷组名，如 vg0" class="w-[170px] font-mono" />
-                <RadioGroup
+                <SegmentedControl
                   v-model="g.mode"
-                  class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-2.5 [&_[data-slot=radio-group-item]]:py-1 [&_[data-slot=radio-group-item]]:text-xs"
-                >
-                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="fresh" /> 新建</Label>
-                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="keep" /> 保留现有（重装不格式化）</Label>
-                </RadioGroup>
+                  :options="[
+                    { value: 'fresh', label: '新建' },
+                    { value: 'keep', label: '保留现有（重装不格式化）' },
+                  ]"
+                />
                 <Button variant="ghost" size="icon" class="size-8 shrink-0 text-destructive hover:text-destructive" @click="vgs.splice(gi, 1)">
                   <Trash2 class="size-4" />
                 </Button>
@@ -1501,13 +1494,13 @@ const HEALTH_GATE_DESC: Record<string, string> = {
                     <SelectItem v-for="(label, key) in SELECTOR_LABEL" :key="key" :value="key">{{ label }}</SelectItem>
                   </SelectContent>
                 </Select>
-                <RadioGroup
+                <SegmentedControl
                   v-model="d.action"
-                  class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-2.5 [&_[data-slot=radio-group-item]]:py-1 [&_[data-slot=radio-group-item]]:text-xs"
-                >
-                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="wipe" /> 擦除并重装分区</Label>
-                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="keep_disk" /> 保留整盘</Label>
-                </RadioGroup>
+                  :options="[
+                    { value: 'wipe', label: '擦除并重装分区' },
+                    { value: 'keep_disk', label: '保留整盘' },
+                  ]"
+                />
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1540,13 +1533,13 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 
         <div class="grid gap-1.5">
           <Label>网络</Label>
-          <RadioGroup
+          <SegmentedControl
             v-model="netMode"
-            class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-          >
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="auto" /> 自动（装机环境 DHCP）</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="static" /> 静态配置</Label>
-          </RadioGroup>
+            :options="[
+              { value: 'auto', label: '自动（装机环境 DHCP）' },
+              { value: 'static', label: '静态配置' },
+            ]"
+          />
           <div v-if="netMode === 'static'" class="grid gap-2 pt-1">
             <div v-for="(n, i) in nics" :key="i" class="rounded-lg border p-3">
               <!-- 普通网卡 -->
@@ -1727,13 +1720,13 @@ const HEALTH_GATE_DESC: Record<string, string> = {
         <div class="grid gap-1.5">
           <Label>{{ isWindows ? '管理员密码（Administrator）' : 'root 密码' }}</Label>
           <div class="flex flex-wrap items-center gap-2">
-            <RadioGroup
+            <SegmentedControl
               v-model="rootMode"
-              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-            >
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="random" /> 按任务随机（推荐）</Label>
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="manual" /> 手动指定</Label>
-            </RadioGroup>
+              :options="[
+                { value: 'random', label: '按任务随机（推荐）' },
+                { value: 'manual', label: '手动指定' },
+              ]"
+            />
             <Input
               v-if="rootMode === 'manual'"
               v-model="rootPassword"
@@ -1833,14 +1826,14 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 
         <div class="grid gap-1.5">
           <Label>引导方式</Label>
-          <RadioGroup
+          <SegmentedControl
             v-model="spec.boot!.strategy"
             :disabled="isWindows && policyDraftInstaller === 'agent'"
-            class="flex gap-2 disabled:opacity-60 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-          >
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="virtual_media" /> 虚拟介质</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="pxe" /> PXE</Label>
-          </RadioGroup>
+            :options="[
+              { value: 'virtual_media', label: '虚拟介质' },
+              { value: 'pxe', label: 'PXE' },
+            ]"
+          />
           <p v-if="spec.boot?.strategy === 'pxe' && !conn.capabilities?.netboot_enabled" class="text-xs text-amber-600 dark:text-amber-400">
             引擎未启用 netboot，PXE 提交会被拒绝。
           </p>
@@ -1882,14 +1875,14 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 
         <div v-if="isWindows" class="grid gap-1.5">
           <Label>安装通路（windows 专用）</Label>
-          <RadioGroup
+          <SegmentedControl
             v-model="policyDraftInstaller"
-            class="flex flex-wrap gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-          >
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="auto" /> 自动（按部署事实）</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="setup" /> setup（需 SMB 导出）</Label>
-            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="agent" /> agent（PXE-only，无需 SMB）</Label>
-          </RadioGroup>
+            :options="[
+              { value: 'auto', label: '自动（按部署事实）' },
+              { value: 'setup', label: 'setup（需 SMB 导出）' },
+              { value: 'agent', label: 'agent（PXE-only，无需 SMB）' },
+            ]"
+          />
           <p class="text-xs leading-relaxed text-muted-foreground">
             Windows 仅支持 UEFI 引导。setup = setup.exe 黑盒，依赖部署层 SMB 导出（MAMMOTH_WINDOWS_INSTALL_SMB_UNC）；
             agent = alpine agent wimlib 铺盘，依赖 extended ISO 池 + PXE（无需 SMB）。
@@ -1983,13 +1976,13 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
           <div class="grid gap-1.5">
             <Label>单机失败后</Label>
-            <RadioGroup
+            <SegmentedControl
               v-model="policy.on_task_failure"
-              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-            >
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="continue" /> 继续其余机器</Label>
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="abort_batch" /> 中止整批</Label>
-            </RadioGroup>
+              :options="[
+                { value: 'continue', label: '继续其余机器' },
+                { value: 'abort_batch', label: '中止整批' },
+              ]"
+            />
           </div>
           <div class="grid gap-1.5">
             <Label for="policy-timeout">单机超时（秒）</Label>
@@ -1997,14 +1990,14 @@ const HEALTH_GATE_DESC: Record<string, string> = {
           </div>
           <div class="grid gap-1.5">
             <Label>装前健康门禁（依据内存盘探针的逐盘 smartctl/nvme 读数）</Label>
-            <RadioGroup
+            <SegmentedControl
               v-model="policy.health_gate"
-              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
-            >
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="off" /> 关闭</Label>
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="report" /> 报告</Label>
-              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="block" /> 拦截</Label>
-            </RadioGroup>
+              :options="[
+                { value: 'off', label: '关闭' },
+                { value: 'report', label: '报告' },
+                { value: 'block', label: '拦截' },
+              ]"
+            />
             <p class="text-xs leading-relaxed text-muted-foreground">{{ HEALTH_GATE_DESC[policy.health_gate] }}</p>
           </div>
         </div>
