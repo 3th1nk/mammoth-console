@@ -20,7 +20,6 @@ import {
 } from '@/api/queryKeys'
 import { useConnectionStore } from '@/stores/connection'
 import { copyToClipboard } from '@/utils/clipboard'
-import { Toaster } from '@/components/ui/sonner'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -240,6 +239,5 @@ async function copyPassword() {
 
     <CommandPalette ref="palette" />
     <ConfirmDialogHost />
-    <Toaster position="bottom-right" rich-colors close-button />
   </SidebarProvider>
 </template>

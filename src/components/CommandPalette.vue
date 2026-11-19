@@ -153,6 +153,22 @@ function onKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     visible.value = !visible.value
+    return
+  }
+  // reka Listbox 没有默认高亮(cmdk 有):无高亮时 Enter 兜底选第一条
+  // 可见结果;有高亮则交给 reka 自己的 Enter 处理,避免双重触发
+  if (e.key === 'Enter' && visible.value) {
+    const highlighted = document.querySelector<HTMLElement>(
+      '[data-slot=command-item][data-highlighted]',
+    )
+    if (highlighted) return
+    const first = document.querySelector<HTMLElement>(
+      '[data-slot=command-item]:not([data-hidden=true])',
+    )
+    if (first) {
+      e.preventDefault()
+      first.click()
+    }
   }
 }
 

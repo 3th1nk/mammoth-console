@@ -131,7 +131,7 @@ async function submit() {
 
 <template>
   <Dialog v-model:open="visible">
-    <DialogContent class="sm:max-w-[680px]">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
       <DialogHeader>
         <DialogTitle>修改 BIOS 属性（下次引导生效）</DialogTitle>
         <DialogDescription>

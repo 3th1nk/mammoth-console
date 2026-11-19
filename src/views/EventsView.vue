@@ -409,7 +409,7 @@ function copySecret() {
     </Tabs>
 
     <Dialog :open="createVisible" @update:open="(v: boolean) => (createVisible = v)">
-      <DialogContent class="sm:max-w-[520px]">
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>新建 webhook 订阅</DialogTitle>
           <DialogDescription>引擎以 HMAC-SHA256 签名投递事件。</DialogDescription>

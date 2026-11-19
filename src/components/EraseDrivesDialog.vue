@@ -127,7 +127,7 @@ async function submit() {
 
 <template>
   <Dialog v-model:open="visible">
-    <DialogContent class="sm:max-w-[680px]">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
       <DialogHeader>
         <DialogTitle>选盘擦除（NIST 800-88 控制器级清除）</DialogTitle>
         <DialogDescription class="sr-only">破坏性操作确认</DialogDescription>
