@@ -244,77 +244,54 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="log-viewer">
-    <div class="toolbar">
-      <el-radio-group v-model="levelFilter" size="small">
-        <el-radio-button value="ALL">全部</el-radio-button>
-        <el-radio-button v-for="lv in ['DEBUG', 'INFO', 'WARN', 'ERROR']" :key="lv" :value="lv">
+  <div class="overflow-hidden rounded-lg border">
+    <div class="flex items-center gap-3 border-b bg-muted/50 px-2.5 py-2">
+      <div class="flex rounded-md border p-0.5">
+        <button
+          v-for="lv in ['ALL', 'DEBUG', 'INFO', 'WARN', 'ERROR']"
+          :key="lv"
+          class="rounded-sm px-2 py-0.5 text-xs transition-colors"
+          :class="levelFilter === lv ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+          @click="levelFilter = lv"
+        >
           {{ lv }}
-        </el-radio-button>
-      </el-radio-group>
-      <el-checkbox v-model="following" size="small">跟随尾部</el-checkbox>
-      <el-tag v-if="!hasOlder && logs.length > 0" type="info" size="small">已到最早</el-tag>
-      <el-tag v-if="ended" type="info" size="small">任务已终态，日志收流完毕</el-tag>
-      <el-button v-if="!following && !ended" size="small" text type="primary" @click="jumpToBottom">
-        回到底部 ↓
-      </el-button>
-    </div>
-    <div ref="container" class="lines mono" @scroll="onScroll">
-      <div v-for="l in visible" :key="l.id" class="line">
-        <span class="ts">{{ l.ts.slice(11, 19) }}</span>
-        <span class="lv" :style="{ color: LEVEL_COLOR[l.level] ?? '#909399' }">{{ l.level.padEnd(5) }}</span>
-        <span v-if="l.stage" class="stage">[{{ l.stage }}]</span>
-        <span class="msg">{{ l.message }}</span>
-        <span v-if="l.attrs && Object.keys(l.attrs).length" class="attrs">{{ JSON.stringify(l.attrs) }}</span>
+        </button>
       </div>
-      <div v-if="visible.length === 0" class="empty">暂无日志{{ ended ? '' : '，等待输出…' }}</div>
+      <label class="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+        <input v-model="following" type="checkbox" class="size-3.5 accent-[var(--primary)]" />
+        跟随尾部
+      </label>
+      <span
+        v-if="!hasOlder && logs.length > 0"
+        class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+      >
+        已到最早
+      </span>
+      <span
+        v-if="ended"
+        class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+      >
+        任务已终态，日志收流完毕
+      </span>
+      <button
+        v-if="!following && !ended"
+        class="ml-auto rounded-md px-2 py-1 text-xs text-primary underline-offset-2 hover:underline"
+        @click="jumpToBottom"
+      >
+        回到底部 ↓
+      </button>
+    </div>
+    <div ref="container" class="h-[360px] overflow-auto bg-[#1e1e1e] px-2.5 py-2 font-mono text-xs leading-[1.7]" @scroll="onScroll">
+      <div v-for="l in visible" :key="l.id" class="whitespace-pre-wrap break-all text-[#d4d4d4]">
+        <span class="mr-2 text-[#6a9955]">{{ l.ts.slice(11, 19) }}</span>
+        <span class="mr-2" :style="{ color: LEVEL_COLOR[l.level] ?? '#909399' }">{{ l.level.padEnd(5) }}</span>
+        <span v-if="l.stage" class="mr-2 text-[#ce9178]">[{{ l.stage }}]</span>
+        <span class="msg">{{ l.message }}</span>
+        <span v-if="l.attrs && Object.keys(l.attrs).length" class="ml-2 text-[#808080]">{{ JSON.stringify(l.attrs) }}</span>
+      </div>
+      <div v-if="visible.length === 0" class="text-[#808080]">
+        暂无日志{{ ended ? '' : '，等待输出…' }}
+      </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.log-viewer {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  overflow: hidden;
-}
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 10px;
-  border-bottom: 1px solid #ebeef5;
-  background: #fafafa;
-}
-.lines {
-  height: 360px;
-  overflow: auto;
-  padding: 8px 10px;
-  background: #1e1e1e;
-  font-size: 12px;
-  line-height: 1.7;
-}
-.line {
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: #d4d4d4;
-}
-.ts {
-  color: #6a9955;
-  margin-right: 8px;
-}
-.lv {
-  margin-right: 8px;
-}
-.stage {
-  color: #ce9178;
-  margin-right: 8px;
-}
-.attrs {
-  color: #808080;
-  margin-left: 8px;
-}
-.empty {
-  color: #808080;
-}
-</style>

@@ -95,3 +95,11 @@ export const MACHINE_STATE_COLOR: Record<string, string> = {
   registering: TONE_COLOR.neutral,
   error: TONE_COLOR.danger,
 }
+
+/** 镜像状态（拉取中/就绪/失败/文件缺失）。 */
+export const IMAGE_STATE: Record<string, StateStyle> = {
+  fetching: { label: '拉取中', tone: 'running' },
+  ready: { label: '就绪', tone: 'success' },
+  failed: { label: '失败', tone: 'danger' },
+  missing: { label: '文件缺失', tone: 'warning' },
+}

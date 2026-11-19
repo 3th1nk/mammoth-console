@@ -1,14 +1,30 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ChevronDown, ChevronRight, RefreshCcw } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { toast } from 'vue-sonner'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { pendingListKey, pendingDomain } from '@/api/queryKeys'
+import { confirm } from '@/composables/confirm'
+import { toneBadgeStyle } from '@/utils/stateColors'
 import type { components } from '@/api/types.gen'
 import RegisterMachineDialog from '@/components/RegisterMachineDialog.vue'
+import { Alert, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import EmptyState from '@/components/EmptyState.vue'
 import { formatTime } from '@/utils/format'
 
 type PendingMachine = components['schemas']['PendingMachine']
@@ -29,6 +45,15 @@ const query = useQuery({
 
 const rows = computed(() => query.data.value?.items ?? [])
 
+// 手写 expand（shadcn Table 无内建）：报告 JSON 原样展示
+const expanded = ref<Set<string>>(new Set())
+function toggleExpand(mac: string) {
+  const next = new Set(expanded.value)
+  if (next.has(mac)) next.delete(mac)
+  else next.add(mac)
+  expanded.value = next
+}
+
 function openClaim(m: PendingMachine) {
   claimTarget.value = m
   dialogVisible.value = true
@@ -38,23 +63,22 @@ function openClaim(m: PendingMachine) {
 // 各入库路径做 MAC 归属比对的引擎不会为已注册机器重建台账，未注册机器
 // 再次 PXE 上报仍会重新出现（台账记录机房的现在，不是历史）。
 async function dismiss(m: PendingMachine) {
-  try {
-    await ElMessageBox.confirm(
+  const ok = await confirm({
+    title: '移除待认领记录',
+    description:
       '移除这条待认领记录？适用于机器已手动注册、记录遗留的情况。未注册的机器再次 PXE 上报会重新出现。',
-      '移除待认领记录',
-      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' },
-    )
-  } catch {
-    return
-  }
+    confirmText: '移除',
+    destructive: true,
+  })
+  if (!ok) return
   try {
     await unwrap(await getClient().DELETE('/api/v1/pending-machines/{mac}', {
       params: { path: { mac: m.mac } },
     }))
-    ElMessage.success('已移除')
+    toast.success('已移除')
     void qc.invalidateQueries({ queryKey: pendingDomain })
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   }
 }
 
@@ -64,77 +88,110 @@ function onRegistered(machine: Machine) {
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">待认领</h1>
-      <el-button :icon="Refresh" @click="query.refetch()">刷新</el-button>
+  <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight">待认领</h2>
+        <p class="text-sm text-muted-foreground">零注册机器台账 · 共 {{ rows.length }} 台</p>
+      </div>
+      <Button variant="outline" size="sm" @click="query.refetch()">
+        <RefreshCcw class="size-4" /> 刷新
+      </Button>
     </div>
 
-    <el-alert
-      v-if="query.error.value"
-      :title="errorMessage(query.error.value)"
-      type="error"
-      :closable="false"
-      show-icon
-      class="mb"
-    />
+    <Alert v-if="query.error.value" variant="destructive">
+      <AlertTitle>{{ errorMessage(query.error.value) }}</AlertTitle>
+    </Alert>
 
-    <el-card shadow="never">
-      <el-table v-loading="query.isFetching.value" :data="rows" size="default">
-        <el-table-column type="expand">
-          <template #default="{ row }">
-            <div class="report">
-              <template v-if="row.report">
-                <div class="text-muted" style="margin-bottom: 6px">
-                  探针 /sys 扫描报告（原样落库）
-                </div>
-                <pre class="mono report-json">{{ JSON.stringify(row.report, null, 2) }}</pre>
+    <Card>
+      <CardContent>
+        <Skeleton v-if="query.isPending.value" class="h-56 w-full" />
+        <div v-else class="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow class="bg-muted/50 hover:bg-muted/50">
+                <TableHead class="w-10" />
+                <TableHead class="w-44">MAC</TableHead>
+                <TableHead class="min-w-[170px]">固件（option 93）</TableHead>
+                <TableHead class="min-w-[120px]">探针报告</TableHead>
+                <TableHead class="w-44">首次出现</TableHead>
+                <TableHead class="w-44">最近出现</TableHead>
+                <TableHead class="w-40 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <template v-for="row in rows" :key="row.mac">
+                <TableRow>
+                  <TableCell>
+                    <button
+                      class="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      @click.stop="toggleExpand(row.mac)"
+                    >
+                      <ChevronRight v-if="!expanded.has(row.mac)" class="size-4" />
+                      <ChevronDown v-else class="size-4" />
+                    </button>
+                  </TableCell>
+                  <TableCell><span class="font-mono text-xs">{{ row.mac }}</span></TableCell>
+                  <TableCell>
+                    <span v-if="row.firmware" class="font-mono text-xs">{{ row.firmware }}</span>
+                    <span v-else class="text-muted-foreground">—</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      v-if="row.report"
+                      variant="outline"
+                      class="rounded-md font-medium"
+                      :style="toneBadgeStyle('success')"
+                    >
+                      已上报
+                    </Badge>
+                    <Badge v-else variant="outline" class="rounded-md font-medium" :style="toneBadgeStyle('neutral')">
+                      未上报
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-muted-foreground">{{ formatTime(row.first_seen_at) }}</TableCell>
+                  <TableCell class="text-muted-foreground">{{ formatTime(row.last_seen_at) }}</TableCell>
+                  <TableCell class="text-right">
+                    <div class="inline-flex justify-end gap-1">
+                      <Button size="sm" class="h-8" @click.stop="openClaim(row)">认领</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-8 text-destructive hover:text-destructive"
+                        @click.stop="dismiss(row)"
+                      >
+                        移除
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+                <TableRow v-if="expanded.has(row.mac)" class="hover:bg-transparent">
+                  <TableCell :colspan="7" class="bg-muted/30 p-0">
+                    <div class="px-10 py-3">
+                      <template v-if="row.report">
+                        <p class="mb-1.5 text-xs text-muted-foreground">探针 /sys 扫描报告（原样落库）</p>
+                        <pre class="max-h-64 overflow-auto rounded-md border bg-muted/50 p-3 font-mono text-xs leading-relaxed">{{ JSON.stringify(row.report, null, 2) }}</pre>
+                      </template>
+                      <p v-else class="text-xs leading-relaxed text-muted-foreground">
+                        尚未收到探针报告——机器可能只 PXE 留痕了一次，没有进入内存盘探针。
+                        让它再次引导（或等待租期重试）即可补齐。
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               </template>
-              <div v-else class="text-muted">
-                尚未收到探针报告——机器可能只 PXE 留痕了一次，没有进入内存盘探针。
-                让它再次引导（或等待租期重试）即可补齐。
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="MAC" width="180">
-          <template #default="{ row }"><span class="mono">{{ row.mac }}</span></template>
-        </el-table-column>
-        <el-table-column label="固件（option 93）" min-width="170">
-          <template #default="{ row }">
-            <span v-if="row.firmware" class="mono">{{ row.firmware }}</span>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="探针报告" min-width="140">
-          <template #default="{ row }">
-            <el-tag v-if="row.report" type="success" size="small">已上报</el-tag>
-            <el-tag v-else type="info" size="small">未上报</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="首次出现" width="170">
-          <template #default="{ row }">{{ formatTime(row.first_seen_at) }}</template>
-        </el-table-column>
-        <el-table-column label="最近出现" width="170">
-          <template #default="{ row }">{{ formatTime(row.last_seen_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" plain @click.stop="openClaim(row)">认领</el-button>
-            <el-button size="small" type="danger" plain @click.stop="dismiss(row)">移除</el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <el-empty :image-size="80" description="登记本是空的">
-            <div class="text-muted" style="font-size: 13px; max-width: 420px; line-height: 1.7">
+            </TableBody>
+          </Table>
+          <EmptyState v-if="rows.length === 0" description="登记簿是空的">
+            <p class="max-w-[420px] text-xs leading-relaxed text-muted-foreground">
               开启引擎零注册（MAMMOTH_PXE_ENABLED + MAMMOTH_PXE_ENROLL）后，
               插电自举的未知机器会在这里留下 MAC、固件与盘查报告——
               拿着序列号去机房认出它，补上 BMC 凭证即可收编。
-            </div>
-          </el-empty>
-        </template>
-      </el-table>
-    </el-card>
+            </p>
+          </EmptyState>
+        </div>
+      </CardContent>
+    </Card>
 
     <RegisterMachineDialog
       v-model="dialogVisible"
@@ -143,22 +200,3 @@ function onRegistered(machine: Machine) {
     />
   </div>
 </template>
-
-<style scoped>
-.mb {
-  margin-bottom: 14px;
-}
-.report {
-  padding: 8px 16px;
-}
-.report-json {
-  margin: 0;
-  font-size: 12px;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 10px;
-  max-height: 320px;
-  overflow: auto;
-}
-</style>
