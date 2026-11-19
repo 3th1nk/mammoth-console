@@ -61,7 +61,7 @@ else.
 
 ![Task detail](docs/screenshots/task-detail.png)
 
-**Dark mode** — Element Plus dark variables with a persisted preference.
+**Dark mode** — Tailwind class-driven theming over shadcn design tokens, with a persisted preference.
 
 ![Dark mode](docs/screenshots/dashboard-dark.png)
 
@@ -117,7 +117,7 @@ suite runs against your own disposable PostgreSQL container.
 
 ## Tech stack
 
-Vue 3 + TypeScript + Element Plus + TanStack Query · openapi-fetch with
+Vue 3 + TypeScript + shadcn-vue (reka-ui) + Tailwind CSS v4 + TanStack Query · openapi-fetch with
 contract-generated types · native SSE wrappers · Vite + vue-tsc · Playwright ·
 Caddy for the production container.
 
