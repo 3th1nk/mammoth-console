@@ -216,30 +216,30 @@ const HEALTH_TONE: Record<string, StateTone> = {
   unknown: 'neutral',
 }
 const HEALTH_LABEL: Record<string, string> = {
-  ok: 'machineDetail.stateOk',
-  warning: 'machineDetail.colHealth',
-  critical: 'states.machineError',
-  unknown: 'states.powerUnknown',
+  ok: 'machineDetail.healthOk',
+  warning: 'machineDetail.healthWarning',
+  critical: 'machineDetail.healthCritical',
+  unknown: 'machineDetail.healthUnknown',
 }
 
 function healthBadge(state?: string) {
   const tone = HEALTH_TONE[state ?? ''] ?? 'neutral'
-  const key = HEALTH_LABEL[state ?? ''] ?? 'states.powerUnknown'
+  const key = HEALTH_LABEL[state ?? ''] ?? 'machineDetail.healthUnknown'
   return { label: t(key), style: toneBadgeStyle(tone) }
 }
 
 const VERDICT_TONE: Record<string, StateTone> = { pass: 'success', degraded: 'warning', fail: 'danger' }
-const VERDICT_LABEL: Record<string, string> = { pass: 'machineDetail.checkOk', degraded: 'machineDetail.colStatus', fail: 'machineDetail.checkMismatch' }
+const VERDICT_LABEL: Record<string, string> = { pass: 'machineDetail.verdictPass', degraded: 'machineDetail.verdictDegraded', fail: 'machineDetail.verdictFail' }
 const CHECK_LABEL: Record<string, string> = {
-  system_facts: 'machineDetail.serial',
-  hostname: 'machineDetail.assignConfirmTitle',
-  storage_mounts: 'machineDetail.dcEvidence',
-  boot_cmdline: 'wizard.kernelArgs',
+  system_facts: 'machineDetail.checkSystemFacts',
+  hostname: 'machineDetail.checkHostname',
+  storage_mounts: 'machineDetail.checkStorageMounts',
+  boot_cmdline: 'machineDetail.checkBootCmdline',
 }
 
 function verdictBadge(verdict: string) {
   const tone = VERDICT_TONE[verdict] ?? 'neutral'
-  const key = VERDICT_LABEL[verdict] ?? 'machineDetail.dcBadge'
+  const key = VERDICT_LABEL[verdict] ?? 'machineDetail.verdictFail'
   return { label: t(key), style: toneBadgeStyle(tone) }
 }
 

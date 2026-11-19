@@ -113,6 +113,8 @@ const JOB_TYPE_LABEL = computed<Record<string, string>>(() => ({
   install: t('jobs.typeInstall'),
   power: t('jobs.typePower'),
   discover: t('jobs.typeDiscover'),
+  rescue: t('jobs.typeRescue'),
+  decommission: t('jobs.typeDecommission'),
 }))
 </script>
 
