@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronDown } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import EraseDrivesDialog from './EraseDrivesDialog.vue'
 import BiosDialog from './BiosDialog.vue'
 import RescueDialog from './RescueDialog.vue'
@@ -44,6 +45,7 @@ const props = withDefaults(
   defineProps<{ machineId: string; powerState?: string; flat?: boolean; bmc?: components['schemas']['BMC'] }>(),
   { powerState: 'unknown', flat: false },
 )
+const { t } = useI18n()
 const emit = defineEmits<{ submitted: [] }>()
 const router = useRouter()
 
@@ -65,20 +67,20 @@ const biosDialog = ref(false)
 const rescueDialog = ref(false)
 const decommissionBusy = ref(false)
 
-const POWER_CONFIRM: Record<string, string> = {
-  power_off: '硬关机不等操作系统落盘，可能丢失数据。确定执行？',
-  soft_off: '向机器发送软关机指令？',
-  hard_reboot: '硬重启立即断电再上电。确定执行？',
-  cycle: '强制循环上电（硬关→开）。确定执行？',
-  eject_media: '弹出该机器挂载的所有虚拟介质？',
-}
+const POWER_CONFIRM = computed<Record<string, string>>(() => ({
+  power_off: t('actions.powerOffConfirm'),
+  soft_off: t('actions.softOffConfirm'),
+  hard_reboot: t('actions.hardRebootConfirm'),
+  cycle: t('actions.cycleConfirm'),
+  eject_media: t('actions.ejectConfirm'),
+}))
 
 function notifyAccepted(title: string, jobId?: string) {
   toast.success(title, {
-    description: jobId ? `任务 ${jobId} 已创建` : undefined,
+    description: jobId ? t('actions.acceptedWithJob', { id: jobId }) : undefined,
     duration: 6000,
     action: jobId
-      ? { label: '查看进度', onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
+      ? { label: t('actions.viewProgress'), onClick: () => router.push({ name: 'job-detail', params: { id: jobId } }) }
       : undefined,
   })
 }
@@ -86,9 +88,9 @@ function notifyAccepted(title: string, jobId?: string) {
 async function submit(action: ActionRequest, confirmText?: string) {
   if (confirmText) {
     const ok = await confirm({
-      title: `操作 ${props.machineId}`,
+      title: t('actions.confirmOpTitle', { id: props.machineId }),
       description: confirmText,
-      confirmText: '执行',
+      confirmText: t('actions.exec'),
     })
     if (!ok) return
   }
@@ -102,7 +104,7 @@ async function submit(action: ActionRequest, confirmText?: string) {
       body: action,
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
-    notifyAccepted('已受理', jobId)
+    notifyAccepted(t('actions.title'), jobId)
     emit('submitted')
   } catch (e) {
     toast.error(errorMessage(e))
@@ -151,15 +153,15 @@ function onCommand(cmd: string) {
     case 'reboot':
       return void submit({ type: 'reboot' })
     case 'soft_off':
-      return void submit({ type: 'soft_off' }, POWER_CONFIRM['soft_off'])
+      return void submit({ type: 'soft_off' }, POWER_CONFIRM.value['soft_off'])
     case 'power_off':
-      return void submit({ type: 'power_off' }, POWER_CONFIRM['power_off'])
+      return void submit({ type: 'power_off' }, POWER_CONFIRM.value['power_off'])
     case 'hard_reboot':
-      return void submit({ type: 'hard_reboot' }, POWER_CONFIRM['hard_reboot'])
+      return void submit({ type: 'hard_reboot' }, POWER_CONFIRM.value['hard_reboot'])
     case 'cycle':
-      return void submit({ type: 'cycle' }, POWER_CONFIRM['cycle'])
+      return void submit({ type: 'cycle' }, POWER_CONFIRM.value['cycle'])
     case 'eject_media':
-      return void submit({ type: 'eject_media' }, POWER_CONFIRM['eject_media'])
+      return void submit({ type: 'eject_media' }, POWER_CONFIRM.value['eject_media'])
     case 'discover':
       // headless 机器引擎只放行带内 SSH 探针(docs/13),无带外可 auto
       if (headless.value) {
@@ -175,10 +177,9 @@ function onCommand(cmd: string) {
 // 装机/救援/退役一律 422,复投 = 重新盘查。
 async function decommission() {
   const ok = await confirm({
-    title: `退役 ${props.machineId}`,
-    description:
-      '退役将对该机器的每一块盘执行 NIST 800-88 安全擦除(数据不可恢复),采集退役证据后将机器标记为 retired。确定执行?',
-    confirmText: '确认退役(全盘擦除)',
+    title: t('actions.decommissionTitle', { id: props.machineId }),
+    description: t('actions.decommissionConfirm'),
+    confirmText: t('actions.decommissionConfirmText'),
     destructive: true,
   })
   if (!ok) return
@@ -193,7 +194,7 @@ async function decommission() {
       } as never,
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
-    notifyAccepted('退役已受理', jobId)
+    notifyAccepted(t('actions.decommissionAccepted'), jobId)
     emit('submitted')
   } catch (e) {
     toast.error(errorMessage(e))
@@ -207,9 +208,9 @@ async function decommission() {
 // 404 由其自身的错误态呈现。
 async function deregister() {
   const ok = await confirm({
-    title: `注销机器 ${props.machineId}`,
-    description: '注销将删除该机器的登记与硬件档案（任务与事件历史保留在作业里）。确定注销？',
-    confirmText: '注销',
+    title: t('actions.deregisterTitle', { id: props.machineId }),
+    description: t('actions.deregisterConfirm'),
+    confirmText: t('actions.deregisterConfirmText'),
     destructive: true,
   })
   if (!ok) return
@@ -218,7 +219,7 @@ async function deregister() {
     await unwrap(
       await getClient().DELETE('/api/v1/machines/{id}', { params: { path: { id: props.machineId } } }),
     )
-    toast.success('机器已注销')
+    toast.success(t('actions.deregistered'))
     emit('submitted')
   } catch (e) {
     toast.error(errorMessage(e))
@@ -229,7 +230,7 @@ async function deregister() {
 
 function powerToggle() {
   if (props.powerState === 'on') {
-    return void submit({ type: 'soft_off' }, POWER_CONFIRM['soft_off'])
+    return void submit({ type: 'soft_off' }, POWER_CONFIRM.value['soft_off'])
   }
   return void submit({ type: 'power_on' })
 }
@@ -241,7 +242,7 @@ function submitBoot() {
 
 function submitMedia() {
   if (!mediaUrl.value.trim()) {
-    toast.warning('请填写镜像 URL（引擎可达，http:// 或 nfs://）')
+    toast.warning(t('actions.mediaUrlRequired'))
     return
   }
   const url = mediaUrl.value.trim()
@@ -265,40 +266,40 @@ function submitMedia() {
         :disabled="submitting"
         @click="powerToggle"
       >
-        {{ powerState === 'on' ? '关机' : '开机' }}
+        {{ powerState === 'on' ? t('actions.powerOff') : t('actions.powerOn') }}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <Button variant="outline" size="sm" class="h-8" :disabled="submitting">
-            更多<ChevronDown class="size-3.5 opacity-60" />
+            {{ t('actions.more') }}<ChevronDown class="size-3.5 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" class="w-44">
           <DropdownMenuItem @click="onCommand('discover:auto')">
-            {{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}
+            {{ headless ? t('actions.discoverInband') : t('actions.discoverAuto') }}
           </DropdownMenuItem>
           <template v-if="!headless">
             <DropdownMenuSeparator />
-            <DropdownMenuItem @click="onCommand('power_off')">硬关机</DropdownMenuItem>
-            <DropdownMenuItem @click="onCommand('reboot')">软重启</DropdownMenuItem>
-            <DropdownMenuItem @click="onCommand('hard_reboot')">硬重启</DropdownMenuItem>
-            <DropdownMenuItem @click="onCommand('cycle')">强制循环上电</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('power_off')">{{ t('actions.hardOff') }}</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('reboot')">{{ t('actions.softReboot') }}</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('hard_reboot')">{{ t('actions.hardReboot') }}</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('cycle')">{{ t('actions.cycle') }}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem @click="onCommand('boot')">设置启动设备</DropdownMenuItem>
-            <DropdownMenuItem @click="onCommand('media')">挂载介质</DropdownMenuItem>
-            <DropdownMenuItem @click="onCommand('eject_media')">弹出介质</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('boot')">{{ t('actions.setBoot') }}</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('media')">{{ t('actions.mountMedia') }}</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('eject_media')">{{ t('actions.ejectMedia') }}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem @click="onCommand('bios')">BIOS 属性</DropdownMenuItem>
-            <DropdownMenuItem @click="onCommand('erase')">选盘擦除</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('bios')">{{ t('actions.biosAttrs') }}</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('erase')">{{ t('actions.erase') }}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem @click="onCommand('decommission')">退役擦盘</DropdownMenuItem>
+            <DropdownMenuItem @click="onCommand('decommission')">{{ t('actions.decommission') }}</DropdownMenuItem>
           </template>
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="onCommand('rescue')">救援模式</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('install')">重装系统</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('rescue')">{{ t('actions.rescue') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('install')">{{ t('actions.reinstall') }}</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem class="text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive" @click="onCommand('deregister')">
-            注销机器
+            {{ t('actions.deregister') }}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -313,32 +314,32 @@ function submitMedia() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" class="w-44">
         <DropdownMenuItem @click="onCommand('discover:auto')">
-          {{ headless ? '盘查（带内 SSH）' : '盘查（自动探针）' }}
+          {{ headless ? t('actions.discoverInband') : t('actions.discoverAuto') }}
         </DropdownMenuItem>
         <template v-if="!headless">
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="onCommand('power_on')">开机</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('soft_off')">软关机</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('power_off')">硬关机</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('reboot')">软重启</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('hard_reboot')">硬重启</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('cycle')">强制循环上电</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('power_on')">{{ t('actions.powerOn') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('soft_off')">{{ t('actions.softOff') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('power_off')">{{ t('actions.hardOff') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('reboot')">{{ t('actions.softReboot') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('hard_reboot')">{{ t('actions.hardReboot') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('cycle')">{{ t('actions.cycle') }}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="onCommand('boot')">设置启动设备</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('media')">挂载介质</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('eject_media')">弹出介质</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('boot')">{{ t('actions.setBoot') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('media')">{{ t('actions.mountMedia') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('eject_media')">{{ t('actions.ejectMedia') }}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="onCommand('bios')">BIOS 属性</DropdownMenuItem>
-          <DropdownMenuItem @click="onCommand('erase')">选盘擦除</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('bios')">{{ t('actions.biosAttrs') }}</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('erase')">{{ t('actions.erase') }}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="onCommand('decommission')">退役擦盘</DropdownMenuItem>
+          <DropdownMenuItem @click="onCommand('decommission')">{{ t('actions.decommission') }}</DropdownMenuItem>
         </template>
         <DropdownMenuSeparator />
-        <DropdownMenuItem @click="onCommand('rescue')">救援模式</DropdownMenuItem>
-        <DropdownMenuItem @click="onCommand('install')">重装系统</DropdownMenuItem>
+        <DropdownMenuItem @click="onCommand('rescue')">{{ t('actions.rescue') }}</DropdownMenuItem>
+        <DropdownMenuItem @click="onCommand('install')">{{ t('actions.reinstall') }}</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem class="text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive" @click="onCommand('deregister')">
-          注销机器
+          {{ t('actions.deregister') }}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -346,32 +347,32 @@ function submitMedia() {
     <Dialog :open="bootDialog" @update:open="(v: boolean) => (bootDialog = v)">
       <DialogContent class="sm:max-w-[460px]" @click.stop>
         <DialogHeader>
-          <DialogTitle>设置启动设备</DialogTitle>
-          <DialogDescription>通过 BMC 设置下次引导的设备。</DialogDescription>
+          <DialogTitle>{{ t('actions.bootTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('actions.bootDesc') }}</DialogDescription>
         </DialogHeader>
         <div class="grid gap-4">
           <div class="grid gap-1.5">
-            <Label>设备</Label>
+            <Label>{{ t('actions.device') }}</Label>
             <SegmentedControl
               v-model="bootDevice"
               :options="[
-                { value: 'pxe', label: 'PXE' },
-                { value: 'disk', label: '磁盘' },
-                { value: 'cdrom', label: '虚拟介质' },
-                { value: 'bios', label: '进 BIOS' },
+                { value: 'pxe', label: t('actions.devPxe') },
+                { value: 'disk', label: t('actions.devDisk') },
+                { value: 'cdrom', label: t('actions.devCdrom') },
+                { value: 'bios', label: t('actions.devBios') },
               ]"
             />
           </div>
           <div class="flex items-center gap-3">
             <Switch id="boot-once" v-model:checked="bootOnce" />
             <Label for="boot-once" class="font-normal text-muted-foreground">
-              一次性：仅下次生效，之后自动回落原启动序
+              {{ t('actions.once') }}
             </Label>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="bootDialog = false">取消</Button>
-          <Button @click="submitBoot">提交</Button>
+          <Button variant="outline" @click="bootDialog = false">{{ t('common.cancel') }}</Button>
+          <Button @click="submitBoot">{{ t('common.submit') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -383,27 +384,27 @@ function submitMedia() {
     <Dialog :open="mediaDialog" @update:open="(v: boolean) => (mediaDialog = v)">
       <DialogContent class="sm:max-w-[500px]" @click.stop>
         <DialogHeader>
-          <DialogTitle>挂载虚拟介质</DialogTitle>
-          <DialogDescription>镜像地址需引擎可达。</DialogDescription>
+          <DialogTitle>{{ t('actions.mediaTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('actions.mediaDesc') }}</DialogDescription>
         </DialogHeader>
         <div class="grid gap-4">
           <div class="grid gap-1.5">
-            <Label for="media-url">镜像 URL</Label>
+            <Label for="media-url">{{ t('actions.mediaUrl') }}</Label>
             <Input
               id="media-url"
               v-model="mediaUrl"
-              placeholder="http://…/ubuntu-24.04.iso 或 nfs://…"
+              :placeholder="t('actions.mediaUrlPlaceholder')"
               class="font-mono"
             />
           </div>
           <div class="flex items-center gap-3">
             <Switch id="eject-after" v-model:checked="ejectAfter" />
-            <Label for="eject-after" class="font-normal">用后弹出</Label>
+            <Label for="eject-after" class="font-normal">{{ t('actions.ejectAfter') }}</Label>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="mediaDialog = false">取消</Button>
-          <Button @click="submitMedia">挂载</Button>
+          <Button variant="outline" @click="mediaDialog = false">{{ t('common.cancel') }}</Button>
+          <Button @click="submitMedia">{{ t('actions.mount') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
