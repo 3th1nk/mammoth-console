@@ -2,8 +2,30 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { Delete } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { LoaderCircle, Trash2 } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
+import ComboInput from '@/components/ComboInput.vue'
+import NumberInput from '@/components/NumberInput.vue'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import { machineWizardTargetsKey, imageWizardKey, jobDomain } from '@/api/queryKeys'
@@ -937,7 +959,7 @@ function next() {
   if (step.value === 2) {
     const err = validateStep2()
     if (err) {
-      ElMessage.warning(err)
+      toast.warning(err)
       return
     }
     void runPlans()
@@ -1021,11 +1043,11 @@ async function submit() {
       },
     }))
     const jobId = (data as components['schemas']['Job'] | undefined)?.id
-    ElMessage.success(`装机任务 ${jobId} 已受理`)
+    toast.success(`装机任务 ${jobId} 已受理`)
     void queryClient.invalidateQueries({ queryKey: jobDomain })
     router.push({ name: 'job-detail', params: { id: jobId } })
   } catch (e) {
-    ElMessage.error(errorMessage(e))
+    toast.error(errorMessage(e))
   } finally {
     submittingJob.value = false
   }
@@ -1168,746 +1190,833 @@ const HEALTH_GATE_DESC: Record<string, string> = {
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">装机向导</h1>
+  <div class="flex flex-1 flex-col gap-4 p-6 pt-5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight">装机向导</h2>
+        <p class="text-sm text-muted-foreground">目标机器 → 安装意图 → 试算预览 → 执行策略</p>
+      </div>
     </div>
 
-    <el-card shadow="never" class="mb">
-      <el-steps :active="step - 1" align-center finish-status="success">
-        <el-step title="目标机器" />
-        <el-step title="安装意图" />
-        <el-step title="试算预览" />
-        <el-step title="执行策略" />
-      </el-steps>
-    </el-card>
+    <Card>
+      <CardContent class="py-6">
+        <ol class="flex w-full items-start">
+          <li
+            v-for="(t, i) in ['目标机器', '安装意图', '试算预览', '执行策略']"
+            :key="t"
+            class="relative flex min-w-0 flex-1 flex-col items-center gap-1.5"
+          >
+            <div
+              v-if="i > 0"
+              class="absolute right-1/2 top-3 h-0.5 w-full"
+              :class="i < step ? 'bg-primary' : 'bg-border'"
+            />
+            <div
+              class="relative z-10 grid size-7 place-items-center rounded-full text-xs font-medium"
+              :class="i + 1 < step
+                ? 'bg-primary text-primary-foreground'
+                : i + 1 === step
+                  ? 'border-2 border-primary text-primary'
+                  : 'border border-border bg-muted text-muted-foreground'"
+            >
+              {{ i + 1 }}
+            </div>
+            <div
+              class="text-xs font-medium"
+              :class="i + 1 === step ? 'text-foreground' : 'text-muted-foreground'"
+            >
+              {{ t }}
+            </div>
+          </li>
+        </ol>
+      </CardContent>
+    </Card>
 
     <!-- Step 1 -->
-    <el-card v-if="step === 1" shadow="never">
-      <el-alert
-        v-if="targetsQuery.error.value"
-        :title="errorMessage(targetsQuery.error.value)"
-        type="error"
-        :closable="false"
-        show-icon
-        class="mb"
-      />
-      <el-table :data="targetRows" v-loading="targetsQuery.isFetching.value" size="default">
-        <el-table-column label="机器" min-width="160">
-          <template #default="{ row }"><span class="mono">{{ row.machine.id }}</span></template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }"><StateBadge kind="machine" :state="row.machine.state" /></template>
-        </el-table-column>
-        <el-table-column label="BMC 地址" min-width="140">
-          <template #default="{ row }"><span class="mono">{{ row.machine.bmc.address }}</span></template>
-        </el-table-column>
-        <el-table-column label="占用检查" min-width="260">
-          <template #default="{ row }">
-            <template v-if="row.busy">
-              <el-tag type="warning" size="small">有进行中的装机任务</el-tag>
-              <span class="mono text-muted" style="margin-left: 6px">{{ row.busyTaskId }}</span>
-            </template>
-            <el-tag v-else type="success" size="small">空闲</el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="step-actions">
-        <span class="text-muted">空闲 {{ readyTargets.length }} / {{ targetRows.length }} 台可装机</span>
-        <el-button type="primary" :disabled="readyTargets.length === 0" @click="step = 2">
-          下一步：安装意图
-        </el-button>
-      </div>
-    </el-card>
+    <Card v-if="step === 1">
+      <CardContent class="flex flex-col gap-3">
+        <Alert v-if="targetsQuery.error.value" variant="destructive">
+          <AlertTitle>{{ errorMessage(targetsQuery.error.value) }}</AlertTitle>
+        </Alert>
+        <Skeleton v-if="targetsQuery.isFetching.value" class="h-40 w-full" />
+        <div v-else class="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow class="bg-muted/50 hover:bg-muted/50">
+                <TableHead class="min-w-[160px]">机器</TableHead>
+                <TableHead class="w-24">状态</TableHead>
+                <TableHead class="min-w-[140px]">BMC 地址</TableHead>
+                <TableHead class="min-w-[240px]">占用检查</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="row in targetRows" :key="row.machine.id">
+                <TableCell><span class="font-mono text-xs">{{ row.machine.id }}</span></TableCell>
+                <TableCell><StateBadge kind="machine" :state="row.machine.state" /></TableCell>
+                <TableCell><span class="font-mono text-xs">{{ row.machine.bmc.address }}</span></TableCell>
+                <TableCell>
+                  <template v-if="row.busy">
+                    <Badge variant="outline" class="rounded-md font-medium" :style="{ color: '#f59e0b', borderColor: '#f59e0b55', backgroundColor: '#f59e0b1a' }">
+                      有进行中的装机任务
+                    </Badge>
+                    <span class="ml-2 font-mono text-xs text-muted-foreground">{{ row.busyTaskId }}</span>
+                  </template>
+                  <Badge v-else variant="outline" class="rounded-md font-medium" :style="{ color: '#10b981', borderColor: '#10b98155', backgroundColor: '#10b9811a' }">
+                    空闲
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-muted-foreground">空闲 {{ readyTargets.length }} / {{ targetRows.length }} 台可装机</span>
+          <Button size="sm" :disabled="readyTargets.length === 0" @click="step = 2">
+            下一步：安装意图
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
 
     <!-- Step 2 -->
-    <el-card v-else-if="step === 2" shadow="never">
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="镜像" required>
-          <el-radio-group v-model="imageMode">
-            <el-radio-button value="library">从镜像库选择（推荐）</el-radio-button>
-            <el-radio-button value="inline">直接填写镜像地址</el-radio-button>
-          </el-radio-group>
-          <div v-if="isDD" class="hint" style="margin-top: 6px">
+    <Card v-else-if="step === 2">
+      <CardContent class="flex flex-col gap-6">
+        <div class="grid gap-1.5">
+          <Label>镜像</Label>
+          <RadioGroup
+            v-model="imageMode"
+            class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+          >
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="library" /> 从镜像库选择（推荐）</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="inline" /> 直接填写镜像地址</Label>
+          </RadioGroup>
+          <p v-if="isDD" class="text-xs leading-relaxed text-muted-foreground">
             镜像直写：整盘镜像（自带分区表/引导器）由 agent 运行时流式写入目标盘，
             写盘流按未压缩镜像逐字节 SHA256 校验；首启意图（主机名/网络/凭证）随 NoCloud seed 生效。
             {{ imageMode === 'library' ? '库镜像由引擎面向机器拉流，校验和与压缩格式按注册件自动携带。' : '' }}
-          </div>
-          <div v-if="imageMode === 'library'" style="width: 100%; margin-top: 6px">
-            <el-select v-model="chosenImageId" placeholder="选择就绪的库镜像" style="width: 420px">
-              <el-option v-for="i in readyImages" :key="i.id" :value="i.id" :label="i.name || i.id">
-                {{ i.name || i.id }} · {{ formatBytes(i.size_bytes) }}
-              </el-option>
-            </el-select>
-            <div class="hint">
+          </p>
+          <div v-if="imageMode === 'library'" class="grid gap-1.5">
+            <Select v-model="chosenImageId">
+              <SelectTrigger class="w-[420px]">
+                <SelectValue placeholder="选择就绪的库镜像" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="i in readyImages" :key="i.id" :value="i.id">
+                  {{ i.name || i.id }} · {{ formatBytes(i.size_bytes) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">
               没有合适的？先到「镜像库」注册（引擎按 SHA256 门禁后台拉取）。
-              <router-link to="/images" target="_blank">打开镜像库</router-link>
-            </div>
-            <div v-if="readyImages.length === 0" class="hint" style="color: #e6a23c">
+              <RouterLink to="/images" target="_blank" class="text-primary underline-offset-2 hover:underline">打开镜像库</RouterLink>
+            </p>
+            <p v-if="readyImages.length === 0" class="text-xs text-amber-600 dark:text-amber-400">
               镜像库中没有就绪的镜像。
-            </div>
+            </p>
           </div>
-          <div v-else style="width: 100%; margin-top: 6px">
-            <el-input
+          <div v-else class="grid gap-1.5">
+            <Input
               v-model="spec.image.source"
               :placeholder="isDD ? 'https://images.example.com/thor.img.gz（机器直连可达的整盘镜像）' : 'https://mirror.example.com/rocky9.iso（引擎可达；粘贴后自动识别发行版）'"
-              class="mono"
+              class="font-mono"
             />
-            <el-input
+            <Input
               v-model="spec.image.checksum"
               :placeholder="isDD ? '校验和: 9f86d8... (未压缩镜像的 SHA256，必填)' : '校验和: 9f86d8... (SHA256，可选，建议填写)'"
-              class="mono"
-              style="margin-top: 6px"
+              class="font-mono"
             />
           </div>
           <template v-if="isDD">
-            <div class="hint" style="margin-top: 6px">
+            <p class="text-xs leading-relaxed text-muted-foreground">
               压缩格式是机器侧运行时选解压器的依据，已按{{ imageMode === 'library' ? '注册镜像' : '镜像地址' }}扩展名预置，可手动改。
-            </div>
-            <el-select v-model="imageFormat" style="margin-top: 6px; width: 220px">
-              <el-option value="raw.gz" label="raw.gz（gzip，推荐）" />
-              <el-option value="raw.xz" label="raw.xz（需扩展池）" />
-              <el-option value="raw" label="raw（未压缩）" />
-            </el-select>
+            </p>
+            <Select v-model="imageFormat">
+              <SelectTrigger class="w-[220px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="raw.gz">raw.gz（gzip，推荐）</SelectItem>
+                <SelectItem value="raw.xz">raw.xz（需扩展池）</SelectItem>
+                <SelectItem value="raw">raw（未压缩）</SelectItem>
+              </SelectContent>
+            </Select>
           </template>
-        </el-form-item>
+        </div>
 
-        <el-form-item label="发行版" required>
-          <el-select v-model="distroChoice" placeholder="选择发行版" style="width: 320px">
-            <el-option v-for="d in orderedDistros" :key="d.name" :value="d.name" :label="d.name === 'dd' ? '镜像直写（dd）' : d.name">
-              <span style="display: inline-flex; align-items: center; gap: 8px">
-                <DistroBadge :name="d.name" :family="d.family" />
-                {{ d.name === 'dd' ? '镜像直写（dd）' : d.name }}
-                <span class="text-muted" style="font-size: 12px">{{ d.name === 'dd' ? '整盘镜像 → 目标盘' : d.family }}</span>
-              </span>
-            </el-option>
-          </el-select>
-          <div v-if="autoDistroHint" class="hint" style="color: #67c23a">{{ autoDistroHint }}</div>
-          <div v-if="distroChoice" class="hint">
+        <div class="grid gap-1.5">
+          <Label>发行版</Label>
+          <Select v-model="distroChoice">
+            <SelectTrigger class="w-[320px]">
+              <SelectValue placeholder="选择发行版" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="d in orderedDistros" :key="d.name" :value="d.name">
+                <span class="inline-flex items-center gap-2">
+                  <DistroBadge :name="d.name" :family="d.family" />
+                  {{ d.name === 'dd' ? '镜像直写（dd）' : d.name }}
+                  <span class="text-xs text-muted-foreground">{{ d.name === 'dd' ? '整盘镜像 → 目标盘' : d.family }}</span>
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p v-if="autoDistroHint" class="text-xs text-emerald-600 dark:text-emerald-400">{{ autoDistroHint }}</p>
+          <p v-if="distroChoice" class="text-xs leading-relaxed text-muted-foreground">
             {{ distroChoice === 'dd' ? '镜像直写通路 · 整盘镜像流式写盘 + NoCloud seed 首启 · 虚拟介质 / PXE 双载体' : distros.find((d) => d.name === distroChoice)?.family + ' 方言 · 保留分区 ' + (KEEP_LABEL[distros.find((d) => d.name === distroChoice)?.keep_partition_support ?? ''] ?? '—') }}
-          </div>
-        </el-form-item>
+          </p>
+        </div>
 
-        <el-form-item label="存储">
-          <div v-if="isDD" class="hint">
+        <div class="grid gap-1.5">
+          <Label>存储</Label>
+          <p v-if="isDD" class="text-xs leading-relaxed text-muted-foreground">
             单目标盘（最大盘）整盘写入——镜像自带分区表与引导器，引擎不再声明分区；
             LVM/自定义分区不适用于本通路。
-          </div>
-          <el-radio-group v-else v-model="storageMode" :disabled="isWindows">
-            <el-radio-button value="standard">{{ isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' }}</el-radio-button>
-            <el-radio-button v-if="!isWindows" value="custom">自定义分区</el-radio-button>
-            <el-radio-button v-if="!isWindows" value="lvm">LVM 卷组</el-radio-button>
-          </el-radio-group>
-          <div v-if="storageMode === 'standard' && !isWindows" class="hint">
+          </p>
+          <RadioGroup
+            v-else
+            v-model="storageMode"
+            :disabled="isWindows"
+            class="flex flex-wrap gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs disabled:opacity-60"
+          >
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal">
+              <RadioGroupItem value="standard" /> {{ isWindows ? '最大盘整盘 NTFS（windows 固定）' : '标准分区' }}
+            </Label>
+            <Label v-if="!isWindows" class="flex cursor-pointer items-center gap-1.5 font-normal">
+              <RadioGroupItem value="custom" /> 自定义分区
+            </Label>
+            <Label v-if="!isWindows" class="flex cursor-pointer items-center gap-1.5 font-normal">
+              <RadioGroupItem value="lvm" /> LVM 卷组
+            </Label>
+          </RadioGroup>
+          <p v-if="storageMode === 'standard' && !isWindows" class="text-xs leading-relaxed text-muted-foreground">
             标准分区 = 最大盘全盘擦除：512M EFI + 4G swap + 其余 xfs 挂 /。
-          </div>
-          <div v-else-if="isWindows" class="hint">
+          </p>
+          <p v-else-if="isWindows" class="text-xs leading-relaxed text-muted-foreground">
             windows 方言：单盘 NTFS 布局由引擎固定生成（多盘/软件 RAID/硬件 RAID 卷均不支持）。
-          </div>
-          <div v-else-if="storageMode === 'lvm'" style="width: 100%; margin-top: 8px">
-            <el-alert
-              type="info"
-              :closable="false"
-              show-icon
-              style="margin-bottom: 8px"
-              title="本档固定声明系统盘（最大盘）引导分区：kickstart 族 ESP + /boot，ubuntu/debian 仅 ESP；根分区 / 建在卷组逻辑卷上。PV 默认整盘消费（隐式擦除）；单盘机器选「引导盘同盘」= PV 占系统盘剩余空间。批量装机按每台机器各自解析。"
-            />
-            <el-alert
-              v-if="isDebian"
-              type="warning"
-              :closable="false"
-              show-icon
-              style="margin-bottom: 8px"
-              title="Debian（partman）限制：仅一个卷组、PV 即安装目标盘（最大盘，自动接线）、逻辑卷 fs 限 ext4/vfat/swap、不支持保留既有卷组。"
-            />
-            <el-card v-for="(g, gi) in vgs" :key="gi" shadow="never" class="disk-block">
-              <div class="disk-head">
-                <el-input v-model="g.name" placeholder="卷组名，如 vg0" style="width: 170px" class="mono" />
-                <el-radio-group v-model="g.mode" size="small">
-                  <el-radio-button value="fresh">新建</el-radio-button>
-                  <el-radio-button value="keep">保留现有（重装不格式化）</el-radio-button>
-                </el-radio-group>
-                <el-button type="danger" plain size="small" :icon="Delete" @click="vgs.splice(gi, 1)" />
+          </p>
+          <div v-else-if="storageMode === 'lvm'" class="grid gap-2">
+            <Alert class="border-blue-500/30 bg-blue-500/5">
+              <AlertDescription class="text-xs leading-relaxed">
+                本档固定声明系统盘（最大盘）引导分区：kickstart 族 ESP + /boot，ubuntu/debian 仅
+                ESP；根分区 / 建在卷组逻辑卷上。PV 默认整盘消费（隐式擦除）；单盘机器选「引导盘同盘」=
+                PV 占系统盘剩余空间。批量装机按每台机器各自解析。
+              </AlertDescription>
+            </Alert>
+            <Alert v-if="isDebian" class="border-amber-500/40 bg-amber-500/5">
+              <AlertDescription class="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                Debian（partman）限制：仅一个卷组、PV 即安装目标盘（最大盘，自动接线）、逻辑卷 fs 限
+                ext4/vfat/swap、不支持保留既有卷组。
+              </AlertDescription>
+            </Alert>
+            <div v-for="(g, gi) in vgs" :key="gi" class="rounded-lg border p-3">
+              <div class="mb-2.5 flex items-center justify-between gap-2">
+                <Input v-model="g.name" placeholder="卷组名，如 vg0" class="w-[170px] font-mono" />
+                <RadioGroup
+                  v-model="g.mode"
+                  class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-2.5 [&_[data-slot=radio-group-item]]:py-1 [&_[data-slot=radio-group-item]]:text-xs"
+                >
+                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="fresh" /> 新建</Label>
+                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="keep" /> 保留现有（重装不格式化）</Label>
+                </RadioGroup>
+                <Button variant="ghost" size="icon" class="size-8 shrink-0 text-destructive hover:text-destructive" @click="vgs.splice(gi, 1)">
+                  <Trash2 class="size-4" />
+                </Button>
               </div>
               <template v-if="g.mode === 'fresh'">
-                <div v-if="!isDebian" class="part-editor">
-                  <div class="hint" style="margin-bottom: 4px">物理卷（PV）：整盘消费，与磁盘声明互斥；「引导盘同盘」= 单盘布局（PV 占系统盘剩余空间）</div>
-                  <div v-for="(p, pi) in g.pvs" :key="pi" class="part-row">
-                    <el-tag size="small" effect="plain" class="kind-tag">PV</el-tag>
-                    <el-select v-model="p.selector" style="width: 210px">
-                      <el-option v-for="key in PV_SELECTOR_OPTIONS" :key="key" :value="key" :label="PV_SELECTOR_LABEL[key]" />
-                    </el-select>
-                    <el-button
-                      type="danger"
-                      plain
-                      :icon="Delete"
+                <div v-if="!isDebian" class="grid gap-1.5">
+                  <p class="text-xs text-muted-foreground">
+                    物理卷（PV）：整盘消费，与磁盘声明互斥；「引导盘同盘」= 单盘布局（PV 占系统盘剩余空间）
+                  </p>
+                  <div v-for="(p, pi) in g.pvs" :key="pi" class="flex items-center gap-1.5">
+                    <Badge variant="outline" class="shrink-0 text-[11px] font-medium">PV</Badge>
+                    <Select v-model="p.selector">
+                      <SelectTrigger class="w-[210px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="key in PV_SELECTOR_OPTIONS" :key="key" :value="key">{{ PV_SELECTOR_LABEL[key] }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="size-8 text-destructive hover:text-destructive"
                       :disabled="g.pvs.length === 1"
                       @click="g.pvs.splice(pi, 1)"
-                    />
+                    >
+                      <Trash2 class="size-4" />
+                    </Button>
                   </div>
-                  <el-button size="small" @click="addPv(g)">+ 添加 PV</el-button>
+                  <Button variant="outline" size="sm" class="w-fit" @click="addPv(g)">+ 添加 PV</Button>
                 </div>
-                <div v-else class="hint">PV 即安装目标盘（最大盘），由 partman 单目标限制自动接线。</div>
-                <div class="part-editor">
-                  <div class="hint" style="margin-bottom: 4px">逻辑卷（LV）：rest = 占满卷组剩余（至多一个）；swap 卷挂载点填 swap</div>
-                  <div v-for="(l, li) in g.logvols" :key="li" class="part-row">
-                    <el-tag size="small" effect="plain" class="kind-tag">LV</el-tag>
-                    <el-input v-model="l.name" placeholder="LV 名，如 root" style="width: 140px" class="mono" />
-                    <el-input v-model="l.size" placeholder="大小（100G / rest）" style="width: 150px" class="mono" />
-                    <el-select v-model="l.fs" style="width: 100px">
-                      <el-option v-for="f in FS_OPTIONS" :key="f" :value="f" :label="f" />
-                    </el-select>
-                    <el-input v-model="l.mount" placeholder="挂载点，如 /" style="width: 170px" class="mono" />
-                    <el-button type="danger" plain :icon="Delete" @click="g.logvols.splice(li, 1)" />
+                <p v-else class="text-xs text-muted-foreground">PV 即安装目标盘（最大盘），由 partman 单目标限制自动接线。</p>
+                <div class="mt-2.5 grid gap-1.5">
+                  <p class="text-xs text-muted-foreground">
+                    逻辑卷（LV）：rest = 占满卷组剩余（至多一个）；swap 卷挂载点填 swap
+                  </p>
+                  <div v-for="(l, li) in g.logvols" :key="li" class="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline" class="shrink-0 text-[11px] font-medium">LV</Badge>
+                    <Input v-model="l.name" placeholder="LV 名，如 root" class="w-[140px] font-mono" />
+                    <Input v-model="l.size" placeholder="大小（100G / rest）" class="w-[150px] font-mono" />
+                    <Select v-model="l.fs">
+                      <SelectTrigger class="w-[100px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="f in FS_OPTIONS" :key="f" :value="f">{{ f }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input v-model="l.mount" placeholder="挂载点，如 /" class="w-[170px] font-mono" />
+                    <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="g.logvols.splice(li, 1)">
+                      <Trash2 class="size-4" />
+                    </Button>
                   </div>
-                  <el-button size="small" @click="addLv(g)">+ 添加逻辑卷</el-button>
+                  <Button variant="outline" size="sm" class="w-fit" @click="addLv(g)">+ 添加逻辑卷</Button>
                 </div>
               </template>
               <template v-else>
-                <div class="hint" style="margin-bottom: 4px">
+                <p class="mb-1.5 text-xs text-muted-foreground">
                   整组原样保留（不格式化）；下方只声明要自动挂回的既有 LV，未列出的装后可手动挂载。
+                </p>
+                <div v-for="(p, pi) in g.preserve" :key="pi" class="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" class="shrink-0 text-[11px] font-medium">挂载</Badge>
+                  <Input v-model="p.name" placeholder="既有 LV 名，如 lvdata" class="w-[160px] font-mono" />
+                  <Input v-model="p.mount" placeholder="挂载点，如 /data" class="w-[180px] font-mono" />
+                  <Select :model-value="p.fs || undefined" @update:model-value="(v: unknown) => (p.fs = v == null ? '' : String(v))">
+                    <SelectTrigger class="w-[130px]">
+                      <SelectValue placeholder="跟随快照" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="f in FS_OPTIONS" :key="f" :value="f">{{ f }}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="g.preserve.splice(pi, 1)">
+                    <Trash2 class="size-4" />
+                  </Button>
                 </div>
-                <div v-for="(p, pi) in g.preserve" :key="pi" class="part-row">
-                  <el-tag size="small" effect="plain" class="kind-tag">挂载</el-tag>
-                  <el-input v-model="p.name" placeholder="既有 LV 名，如 lvdata" style="width: 160px" class="mono" />
-                  <el-input v-model="p.mount" placeholder="挂载点，如 /data" style="width: 180px" class="mono" />
-                  <el-select v-model="p.fs" placeholder="跟随快照" clearable style="width: 130px">
-                    <el-option v-for="f in FS_OPTIONS" :key="f" :value="f" :label="f" />
-                  </el-select>
-                  <el-button type="danger" plain :icon="Delete" @click="g.preserve.splice(pi, 1)" />
-                </div>
-                <el-button size="small" @click="addPreserve(g)">+ 添加挂载</el-button>
+                <Button variant="outline" size="sm" class="mt-1.5 w-fit" @click="addPreserve(g)">+ 添加挂载</Button>
               </template>
-            </el-card>
-            <el-button size="small" @click="addVg">+ 添加卷组</el-button>
+            </div>
+            <Button variant="outline" size="sm" class="w-fit" @click="addVg">+ 添加卷组</Button>
           </div>
-          <div v-else style="width: 100%; margin-top: 8px">
-            <el-card v-for="(d, di) in disks" :key="di" shadow="never" class="disk-block">
-              <div class="disk-head">
-                <el-select v-model="d.selector" style="width: 170px">
-                  <el-option v-for="(label, key) in SELECTOR_LABEL" :key="key" :value="key" :label="label" />
-                </el-select>
-                <el-radio-group v-model="d.action" size="small">
-                  <el-radio-button value="wipe">擦除并重装分区</el-radio-button>
-                  <el-radio-button value="keep_disk">保留整盘</el-radio-button>
-                </el-radio-group>
-                <el-button
-                  type="danger"
-                  plain
-                  size="small"
-                  :icon="Delete"
+          <div v-else class="grid gap-2">
+            <div v-for="(d, di) in disks" :key="di" class="rounded-lg border p-3">
+              <div class="mb-2.5 flex items-center justify-between gap-2">
+                <Select v-model="d.selector">
+                  <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="(label, key) in SELECTOR_LABEL" :key="key" :value="key">{{ label }}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <RadioGroup
+                  v-model="d.action"
+                  class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-2.5 [&_[data-slot=radio-group-item]]:py-1 [&_[data-slot=radio-group-item]]:text-xs"
+                >
+                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="wipe" /> 擦除并重装分区</Label>
+                  <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="keep_disk" /> 保留整盘</Label>
+                </RadioGroup>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="size-8 shrink-0 text-destructive hover:text-destructive"
                   :disabled="disks.length === 1"
                   @click="disks.splice(di, 1)"
                 />
               </div>
-              <div v-if="d.action === 'wipe'" class="part-editor">
-                <div v-for="(p, pi) in d.partitions" :key="pi" class="part-row">
-                  <el-input v-model="p.size" placeholder="大小（512M / rest）" style="width: 150px" class="mono" />
-                  <el-select v-model="p.fs" style="width: 110px">
-                    <el-option v-for="f in FS_OPTIONS" :key="f" :value="f" :label="f" />
-                  </el-select>
-                  <el-input v-model="p.mount" placeholder="挂载点，如 /" style="width: 180px" class="mono" />
-                  <el-button type="danger" plain :icon="Delete" @click="d.partitions.splice(pi, 1)" />
+              <div v-if="d.action === 'wipe'" class="grid gap-1.5">
+                <div v-for="(p, pi) in d.partitions" :key="pi" class="flex flex-wrap items-center gap-1.5">
+                  <Input v-model="p.size" placeholder="大小（512M / rest）" class="w-[150px] font-mono" />
+                  <Select v-model="p.fs">
+                    <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="f in FS_OPTIONS" :key="f" :value="f">{{ f }}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input v-model="p.mount" placeholder="挂载点，如 /" class="w-[180px] font-mono" />
+                  <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="d.partitions.splice(pi, 1)">
+                    <Trash2 class="size-4" />
+                  </Button>
                 </div>
-                <el-button size="small" @click="addPartition(d)">+ 添加分区</el-button>
+                <Button variant="outline" size="sm" class="w-fit" @click="addPartition(d)">+ 添加分区</Button>
               </div>
-              <div v-else class="hint">保留整盘：不触碰该盘上的任何数据。</div>
-            </el-card>
-            <el-button size="small" @click="addDisk">+ 添加磁盘</el-button>
+              <p v-else class="text-xs text-muted-foreground">保留整盘：不触碰该盘上的任何数据。</p>
+            </div>
+            <Button variant="outline" size="sm" class="w-fit" @click="addDisk">+ 添加磁盘</Button>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item label="网络">
-          <el-radio-group v-model="netMode">
-            <el-radio-button value="auto">自动（装机环境 DHCP）</el-radio-button>
-            <el-radio-button value="static">静态配置</el-radio-button>
-          </el-radio-group>
-          <div v-if="netMode === 'static'" style="width: 100%; margin-top: 8px">
-            <div v-for="(n, i) in nics" :key="i" class="net-block">
+        <div class="grid gap-1.5">
+          <Label>网络</Label>
+          <RadioGroup
+            v-model="netMode"
+            class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+          >
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="auto" /> 自动（装机环境 DHCP）</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="static" /> 静态配置</Label>
+          </RadioGroup>
+          <div v-if="netMode === 'static'" class="grid gap-2 pt-1">
+            <div v-for="(n, i) in nics" :key="i" class="rounded-lg border p-3">
               <!-- 普通网卡 -->
               <template v-if="n.kind === 'nic'">
-                <div class="repo-row">
-                  <el-tag size="small" effect="plain" class="kind-tag">网卡</el-tag>
-                  <el-select v-model="n.matchKey" style="width: 110px" :disabled="isWindows" @change="onMatchKeyChange(n)">
-                    <el-option v-for="k in MATCH_KEYS" :key="k" :value="k" :label="MATCH_KEY_LABEL[k]" />
-                  </el-select>
-                  <el-select
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" class="shrink-0 text-[11px] font-medium">网卡</Badge>
+                  <Select v-model="n.matchKey" :disabled="isWindows" @update:model-value="() => onMatchKeyChange(n)">
+                    <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="k in MATCH_KEYS" :key="k" :value="k">{{ MATCH_KEY_LABEL[k] }}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <ComboInput
                     v-model="n.matchValue"
-                    filterable
-                    allow-create
-                    default-first-option
-                    clearable
+                    :options="nicOptionsByKey[n.matchKey].map((o) => ({ value: o.value, detail: nicOptionDetail(n.matchKey, o) }))"
                     :placeholder="matchPlaceholder(n.matchKey)"
-                    class="mono"
-                    style="width: 260px"
-                  >
-                    <el-option v-for="o in nicOptionsByKey[n.matchKey]" :key="o.value" :value="o.value" :label="o.value">
-                      <span style="display: inline-flex; align-items: center; gap: 8px">
-                        <span class="mono">{{ o.value }}</span>
-                        <span class="text-muted" style="font-size: 12px">{{ nicOptionDetail(n.matchKey, o) }}</span>
-                      </span>
-                    </el-option>
-                  </el-select>
-                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式，如 198.51.100.5/24" class="mono" style="width: 180px" />
-                  <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
-                  <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 160px" />
-                  <el-input v-model="n.dns" placeholder="DNS，逗号分隔（可选）" class="mono" style="width: 180px" />
-                  <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />
+                    input-class="w-[260px]"
+                  />
+                  <Input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式，如 198.51.100.5/24" class="w-[180px] font-mono" />
+                  <span v-else class="shrink-0 text-xs text-muted-foreground">IP 逐台 ↓</span>
+                  <Input v-model="n.gateway" placeholder="网关（可选）" class="w-[160px] font-mono" />
+                  <Input v-model="n.dns" placeholder="DNS，逗号分隔（可选）" class="w-[180px] font-mono" />
+                  <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="nics.splice(i, 1)">
+                    <Trash2 class="size-4" />
+                  </Button>
                 </div>
               </template>
               <!-- bond -->
               <template v-else>
-                <div class="repo-row">
-                  <el-tag size="small" type="warning" effect="plain" class="kind-tag">bond</el-tag>
-                  <el-tooltip content="bond 名称由引擎按声明顺序分配（bond0、bond1…），VLAN 挂载时引用该名称" placement="top">
-                    <el-input :model-value="bondNameOf(n)" disabled class="mono" style="width: 110px" />
-                  </el-tooltip>
-                  <el-select v-model="n.mode" style="width: 170px">
-                    <el-option v-for="m in BOND_MODES" :key="m" :value="m" :label="m" />
-                  </el-select>
-                  <el-input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式（可选）" class="mono" style="width: 180px" />
-                  <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
-                  <el-input v-model="n.gateway" placeholder="网关（可选）" class="mono" style="width: 150px" />
-                  <el-button type="danger" plain :icon="Delete" @click="nics.splice(i, 1)" />
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" class="shrink-0 rounded-md text-[11px] font-medium" :style="{ color: '#f59e0b', borderColor: '#f59e0b55', backgroundColor: '#f59e0b1a' }">
+                    bond
+                  </Badge>
+                  <TooltipProvider :delay-duration="200">
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Input :model-value="bondNameOf(n)" disabled class="w-[110px] font-mono" />
+                      </TooltipTrigger>
+                      <TooltipContent>bond 名称由引擎按声明顺序分配（bond0、bond1…），VLAN 挂载时引用该名称</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Select v-model="n.mode">
+                    <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="m in BOND_MODES" :key="m" :value="m">{{ m }}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input v-if="!isBatchStatic" v-model="n.ip" placeholder="CIDR 格式（可选）" class="w-[180px] font-mono" />
+                  <span v-else class="shrink-0 text-xs text-muted-foreground">IP 逐台 ↓</span>
+                  <Input v-model="n.gateway" placeholder="网关（可选）" class="w-[150px] font-mono" />
+                  <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="nics.splice(i, 1)">
+                    <Trash2 class="size-4" />
+                  </Button>
                 </div>
-                <div class="bond-members">
-                  <div class="repo-row">
-                    <span class="text-muted" style="font-size: 12px">成员匹配方式</span>
-                    <el-select v-model="n.memberKey" style="width: 110px" :disabled="isWindows" @change="onMemberKeyChange(n)">
-                      <el-option v-for="k in MATCH_KEYS" :key="k" :value="k" :label="MATCH_KEY_LABEL[k]" />
-                    </el-select>
-                    <span class="text-muted" style="font-size: 12px">按 miimon 链路监测；高级参数也接受 cloud-init v2 拼写（如 {"mii-monitor-interval":100}），未知键会被引擎渲染期拒绝</span>
+                <div class="mt-2 flex flex-wrap items-center gap-1.5 pl-3.5">
+                  <div class="flex w-full flex-wrap items-center gap-1.5">
+                    <span class="text-xs text-muted-foreground">成员匹配方式</span>
+                    <Select v-model="n.memberKey" :disabled="isWindows" @update:model-value="() => onMemberKeyChange(n)">
+                      <SelectTrigger class="w-[110px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="k in MATCH_KEYS" :key="k" :value="k">{{ MATCH_KEY_LABEL[k] }}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span class="text-xs text-muted-foreground">按 miimon 链路监测；高级参数也接受 cloud-init v2 拼写（如 {"mii-monitor-interval":100}），未知键会被引擎渲染期拒绝</span>
                   </div>
-                  <div v-for="(_m, mi) in n.memberValues" :key="mi" class="repo-row">
-                    <el-select
-                      v-model="n.memberValues[mi]"
-                      filterable
-                      allow-create
-                      default-first-option
-                      clearable
+                  <div v-for="(_m, mi) in n.memberValues" :key="mi" class="flex w-full flex-wrap items-center gap-1.5">
+                    <ComboInput
+                      :model-value="n.memberValues[mi] ?? ''"
+                      :options="nicOptionsByKey[n.memberKey].map((o) => ({ value: o.value, detail: nicOptionDetail(n.memberKey, o) }))"
                       :placeholder="matchPlaceholder(n.memberKey)"
-                      class="mono"
-                      style="width: 300px"
-                    >
-                      <el-option v-for="o in nicOptionsByKey[n.memberKey]" :key="o.value" :value="o.value" :label="o.value">
-                        <span style="display: inline-flex; align-items: center; gap: 8px">
-                          <span class="mono">{{ o.value }}</span>
-                          <span class="text-muted" style="font-size: 12px">{{ nicOptionDetail(n.memberKey, o) }}</span>
-                        </span>
-                      </el-option>
-                    </el-select>
-                    <el-button type="danger" plain size="small" :icon="Delete" @click="n.memberValues.splice(mi, 1)" />
+                      input-class="w-[300px]"
+                      @update:model-value="(v: string) => { if (n.memberValues[mi] !== undefined) n.memberValues[mi] = v }"
+                    />
+                    <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="n.memberValues.splice(mi, 1)">
+                      <Trash2 class="size-4" />
+                    </Button>
                   </div>
-                  <el-button size="small" @click="n.memberValues.push('')">+ 成员</el-button>
-                  <el-input v-model="n.miimon" placeholder="miimon(ms)" class="mono" style="width: 130px" />
-                  <el-input v-model="n.paramsRaw" placeholder='高级参数 JSON，如 {"lacp_rate":"fast"}' class="mono" style="width: 320px" />
+                  <Button variant="outline" size="sm" class="w-fit" @click="n.memberValues.push('')">+ 成员</Button>
+                  <Input v-model="n.miimon" placeholder="miimon(ms)" class="w-[130px] font-mono" />
+                  <Input v-model="n.paramsRaw" placeholder='高级参数 JSON，如 {"lacp_rate":"fast"}' class="w-[320px] font-mono" />
                 </div>
               </template>
             </div>
-            <div class="net-add">
-              <el-button size="small" @click="addNic">+ 添加网卡</el-button>
-              <el-button size="small" :disabled="!bondSupported || isWindows" @click="addBond">+ 添加 bond</el-button>
-              <el-button size="small" :disabled="!bondSupported || isWindows" @click="addVlan">+ 添加 VLAN</el-button>
+            <div class="flex gap-1.5">
+              <Button variant="outline" size="sm" class="w-fit" @click="addNic">+ 添加网卡</Button>
+              <Button variant="outline" size="sm" class="w-fit" :disabled="!bondSupported || isWindows" @click="addBond">+ 添加 bond</Button>
+              <Button variant="outline" size="sm" class="w-fit" :disabled="!bondSupported || isWindows" @click="addVlan">+ 添加 VLAN</Button>
             </div>
-            <div v-if="nicInventoryHint" class="hint" style="color: #e6a23c">{{ nicInventoryHint }}</div>
-            <div v-if="!bondSupported" class="hint" style="color: #e6a23c">
+            <p v-if="nicInventoryHint" class="text-xs text-amber-600 dark:text-amber-400">{{ nicInventoryHint }}</p>
+            <p v-if="!bondSupported" class="text-xs text-amber-600 dark:text-amber-400">
               Debian 方言不支持 bond/VLAN（引擎渲染即拒）；如需 bond 请改用 Rocky/Ubuntu 系列。
-            </div>
-            <div v-else-if="isWindows" class="hint" style="color: #e6a23c">
+            </p>
+            <p v-else-if="isWindows" class="text-xs text-amber-600 dark:text-amber-400">
               Windows 方言不支持 bond/VLAN；静态网络仅支持单网卡（MAC 绑定）。
-            </div>
+            </p>
             <template v-if="vlans.length > 0">
-              <div class="text-muted" style="font-size: 12px; margin-top: 10px">VLAN 子接口：</div>
-              <div v-for="(v, i) in vlans" :key="'v' + i" class="repo-row">
-                <el-tag size="small" type="warning" effect="plain" class="kind-tag">VLAN</el-tag>
-                <el-input v-model="v.id" placeholder="VLAN ID" class="mono" style="width: 110px" />
-                <el-input v-model="v.link" placeholder="挂在哪个接口（bond0）" class="mono" style="width: 200px" />
-                <el-input v-if="!isBatchStatic" v-model="v.ip" placeholder="CIDR 格式" class="mono" style="width: 180px" />
-                <span v-else class="text-muted" style="font-size: 12px; flex-shrink: 0">IP 逐台 ↓</span>
-                <el-button type="danger" plain :icon="Delete" @click="vlans.splice(i, 1)" />
+              <p class="pt-1 text-xs text-muted-foreground">VLAN 子接口：</p>
+              <div v-for="(v, i) in vlans" :key="'v' + i" class="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" class="shrink-0 rounded-md text-[11px] font-medium" :style="{ color: '#f59e0b', borderColor: '#f59e0b55', backgroundColor: '#f59e0b1a' }">
+                  VLAN
+                </Badge>
+                <Input v-model="v.id" placeholder="VLAN ID" class="w-[110px] font-mono" />
+                <Input v-model="v.link" placeholder="挂在哪个接口（bond0）" class="w-[200px] font-mono" />
+                <Input v-if="!isBatchStatic" v-model="v.ip" placeholder="CIDR 格式" class="w-[180px] font-mono" />
+                <span v-else class="shrink-0 text-xs text-muted-foreground">IP 逐台 ↓</span>
+                <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="vlans.splice(i, 1)">
+                  <Trash2 class="size-4" />
+                </Button>
               </div>
             </template>
             <template v-if="isBatchStatic">
-              <div class="text-muted" style="font-size: 12px; margin-top: 12px">
+              <p class="pt-1 text-xs text-muted-foreground">
                 逐台地址分配（每台每个接口一格，引擎按台解析；上方行的网关/DNS 批量共享）：
+              </p>
+              <div class="overflow-x-auto rounded-lg border">
+                <Table class="min-w-[640px]">
+                  <TableHeader>
+                    <TableRow class="bg-muted/50 hover:bg-muted/50">
+                      <TableHead class="min-w-[150px]">机器</TableHead>
+                      <TableHead v-for="col in matrixColumns" :key="col.key" class="min-w-[170px]">{{ col.label }}</TableHead>
+                      <TableHead class="min-w-[150px]">主机名（可选）</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow v-for="row in readyTargets" :key="row.machine.id">
+                      <TableCell>
+                        <span class="font-mono text-xs">{{ row.machine.id }}</span>
+                        <div class="font-mono text-[11px] text-muted-foreground">{{ row.machine.bmc.address }}</div>
+                      </TableCell>
+                      <TableCell v-for="col in matrixColumns" :key="col.key">
+                        <Input
+                          :model-value="matrixCell(row.machine.id, col.key)"
+                          placeholder="CIDR，如 10.0.0.11/24"
+                          class="h-8 font-mono text-xs"
+                          @update:model-value="setMatrixCell(row.machine.id, col.key, String($event))"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          :model-value="hostnameMatrix[row.machine.id] ?? ''"
+                          placeholder="node-01"
+                          class="h-8 font-mono text-xs"
+                          @update:model-value="hostnameMatrix[row.machine.id] = String($event)"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
               </div>
-              <el-table :data="readyTargets" size="small" class="matrix-table">
-                <el-table-column label="机器" min-width="150">
-                  <template #default="{ row }">
-                    <span class="mono" style="font-size: 12px">{{ row.machine.id }}</span>
-                    <div class="text-muted mono" style="font-size: 11px">{{ row.machine.bmc.address }}</div>
-                  </template>
-                </el-table-column>
-                <el-table-column v-for="col in matrixColumns" :key="col.key" :label="col.label" min-width="170">
-                  <template #default="{ row }">
-                    <el-input
-                      :model-value="matrixCell(row.machine.id, col.key)"
-                      placeholder="CIDR，如 10.0.0.11/24"
-                      class="mono"
-                      size="small"
-                      @update:model-value="setMatrixCell(row.machine.id, col.key, $event)"
-                    />
-                  </template>
-                </el-table-column>
-                <el-table-column label="主机名（可选）" min-width="150">
-                  <template #default="{ row }">
-                    <el-input
-                      :model-value="hostnameMatrix[row.machine.id] ?? ''"
-                      placeholder="node-01"
-                      class="mono"
-                      size="small"
-                      @update:model-value="hostnameMatrix[row.machine.id] = $event"
-                    />
-                  </template>
-                </el-table-column>
-              </el-table>
-              <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px">
-                <el-button size="small" @click="fillIncremental">按各列首行递增填充</el-button>
-                <span class="text-muted" style="font-size: 12px">取每列第一台的值，最后一字节逐台 +1（仅 IPv4）。</span>
+              <div class="flex items-center gap-2">
+                <Button variant="outline" size="sm" @click="fillIncremental">按各列首行递增填充</Button>
+                <span class="text-xs text-muted-foreground">取每列第一台的值，最后一字节逐台 +1（仅 IPv4）。</span>
               </div>
-              <div v-if="matrixColumns.length === 0" class="hint" style="color: #e6a23c">
+              <p v-if="matrixColumns.length === 0" class="text-xs text-amber-600 dark:text-amber-400">
                 还没有可分配的接口列：网卡需选定匹配值、bond 需要成员、VLAN 需要 ID。
-              </div>
+              </p>
             </template>
           </div>
-          <div v-else class="hint">不配置则由装机环境 DHCP 分配网络。</div>
-        </el-form-item>
+          <p v-else class="text-xs text-muted-foreground">不配置则由装机环境 DHCP 分配网络。</p>
+        </div>
 
-        <el-form-item label="主机名">
-          <el-input
+        <div class="grid gap-1.5">
+          <Label for="hostname-pattern">主机名</Label>
+          <Input
+            id="hostname-pattern"
             v-model="hostnamePattern"
             :disabled="isBatchStatic && batchHostnameUsed"
             placeholder="如 node-{index} → node-1、node-2…"
-            style="width: 320px"
+            class="w-[320px] font-mono"
           />
-          <div class="hint">
+          <p class="text-xs leading-relaxed text-muted-foreground">
             <template v-if="isBatchStatic && batchHostnameUsed">已在下方逐台表格使用显式主机名（此模式被接管）。</template>
             支持变量：{index}（按勾选顺序 1、2、3…）、{machine_id}、{serial}、{bmc_address}、{label:key}（取机器标签）；不含变量时所有机器同名（不推荐）。
             逐台固定名可在静态网络的逐台表格里填「主机名」列。
-          </div>
-        </el-form-item>
+          </p>
+        </div>
 
-        <el-form-item :label="isWindows ? '管理员密码（Administrator）' : 'root 密码'">
-          <div class="inline-row">
-            <el-radio-group v-model="rootMode">
-              <el-radio-button value="random">按任务随机（推荐）</el-radio-button>
-              <el-radio-button value="manual">手动指定</el-radio-button>
-            </el-radio-group>
-            <el-input
+        <div class="grid gap-1.5">
+          <Label>{{ isWindows ? '管理员密码（Administrator）' : 'root 密码' }}</Label>
+          <div class="flex flex-wrap items-center gap-2">
+            <RadioGroup
+              v-model="rootMode"
+              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+            >
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="random" /> 按任务随机（推荐）</Label>
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="manual" /> 手动指定</Label>
+            </RadioGroup>
+            <Input
               v-if="rootMode === 'manual'"
               v-model="rootPassword"
               type="password"
-              show-password
               :placeholder="isWindows ? '管理员密码' : 'root 密码'"
-              style="width: 240px"
+              class="w-[240px] font-mono"
             />
           </div>
-          <div class="hint">随机模式下，密码将在装机完成时经一次性事件弹出，仅此一次，请留意保存。</div>
-        </el-form-item>
+          <p class="text-xs leading-relaxed text-muted-foreground">随机模式下，密码将在装机完成时经一次性事件弹出，仅此一次，请留意保存。</p>
+        </div>
 
-        <el-form-item v-if="!isWindows" label="SSH 公钥">
-          <div style="width: 100%">
-            <div v-for="(_k, i) in sshKeys" :key="i" class="repo-row">
-              <el-input v-model="sshKeys[i]" placeholder="ssh-ed25519 AAAA… user@host" class="mono" style="flex: 1" />
-              <el-button type="danger" plain :icon="Delete" @click="sshKeys.splice(i, 1)" />
+        <div v-if="!isWindows" class="grid gap-1.5">
+          <Label>SSH 公钥</Label>
+          <div class="grid gap-1.5">
+            <div v-for="(_k, i) in sshKeys" :key="i" class="flex items-center gap-1.5">
+              <Input v-model="sshKeys[i]" placeholder="ssh-ed25519 AAAA… user@host" class="flex-1 font-mono" />
+              <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="sshKeys.splice(i, 1)">
+                <Trash2 class="size-4" />
+              </Button>
             </div>
-            <el-button size="small" @click="addSshKey">+ 添加公钥</el-button>
-            <div class="hint">注意：这里的公钥是给你登录用的；「凭证」页的 SSH 私钥是引擎做带内盘查的认证凭据，两者互不相干。</div>
+            <Button variant="outline" size="sm" class="w-fit" @click="addSshKey">+ 添加公钥</Button>
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              注意：这里的公钥是给你登录用的；「凭证」页的 SSH 私钥是引擎做带内盘查的认证凭据，两者互不相干。
+            </p>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item v-if="isWindows" label="开启远程管理能力（opt-in，缺省全关）">
-          <el-checkbox-group v-model="winCaps">
-            <el-checkbox value="rdp">远程桌面（RDP）</el-checkbox>
-            <el-checkbox value="winrm">WinRM 远程管理</el-checkbox>
-            <el-checkbox value="ping">ICMP ping</el-checkbox>
-          </el-checkbox-group>
-          <div class="hint">全新系统默认不开任何入站管理面；按需开启是运营者的安全决策。</div>
-        </el-form-item>
+        <div v-if="isWindows" class="grid gap-1.5">
+          <Label>开启远程管理能力（opt-in，缺省全关）</Label>
+          <div class="flex flex-wrap gap-x-5 gap-y-2">
+            <label v-for="cap in [{ value: 'rdp', label: '远程桌面（RDP）' }, { value: 'winrm', label: 'WinRM 远程管理' }, { value: 'ping', label: 'ICMP ping' }]" :key="cap.value" class="flex cursor-pointer items-center gap-2 text-sm">
+              <Checkbox
+                :model-value="winCaps.includes(cap.value as 'rdp' | 'winrm' | 'ping')"
+                @update:model-value="(v: boolean | 'indeterminate') => {
+                  if (v === 'indeterminate') return
+                  winCaps = v
+                    ? [...winCaps, cap.value as 'rdp' | 'winrm' | 'ping']
+                    : winCaps.filter((x) => x !== cap.value)
+                }"
+              />
+              {{ cap.label }}
+            </label>
+          </div>
+          <p class="text-xs leading-relaxed text-muted-foreground">全新系统默认不开任何入站管理面；按需开启是运营者的安全决策。</p>
+        </div>
 
-        <el-form-item v-if="!isWindows && !isDD" label="软件源">
-          <div style="width: 100%">
-            <div v-for="(r, idx) in repos" :key="idx" class="repo-row">
-              <el-input v-model="r.name" placeholder="name" style="width: 130px" class="mono" />
-              <el-input v-model="r.url" placeholder="http(s)://repo-url" style="flex: 1" class="mono" />
-              <el-input v-model="r.gpg_key_url" placeholder="GPG key URL（可选）" style="width: 200px" class="mono" />
-              <el-input v-model="r.suite" placeholder="suite" style="width: 90px" class="mono" />
-              <el-input v-model="r.components" placeholder="components" style="width: 110px" class="mono" />
-              <el-button type="danger" plain :icon="Delete" @click="removeRepo(idx)" />
+        <div v-if="!isWindows && !isDD" class="grid gap-1.5">
+          <Label>软件源</Label>
+          <div class="grid gap-1.5">
+            <div v-for="(r, idx) in repos" :key="idx" class="flex flex-wrap items-center gap-1.5">
+              <Input v-model="r.name" placeholder="name" class="w-[130px] font-mono" />
+              <Input v-model="r.url" placeholder="http(s)://repo-url" class="min-w-0 flex-1 font-mono" />
+              <Input v-model="r.gpg_key_url" placeholder="GPG key URL（可选）" class="w-[200px] font-mono" />
+              <Input v-model="r.suite" placeholder="suite" class="w-[90px] font-mono" />
+              <Input v-model="r.components" placeholder="components" class="w-[110px] font-mono" />
+              <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="removeRepo(idx)">
+                <Trash2 class="size-4" />
+              </Button>
             </div>
-            <el-button size="small" @click="addRepo">+ 添加软件源</el-button>
+            <Button variant="outline" size="sm" class="w-fit" @click="addRepo">+ 添加软件源</Button>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item v-if="!isDD" :label="isWindows ? '脚本（Windows：装后走引擎托管首启链；装前仅 setup 通路的 WinPE）' : '脚本'">
-          <div style="width: 100%">
-            <el-card v-for="(sc, i) in scripts" :key="i" shadow="never" class="script-block">
-              <div class="script-head">
-                <el-select v-model="sc.stage" style="width: 240px">
-                  <el-option label="装前执行（pre_install）" value="pre_install" />
-                  <el-option label="装后执行（post_install）" value="post_install" />
-                </el-select>
-                <el-select v-if="isWindows" v-model="sc.shell" style="width: 170px">
-                  <el-option label="cmd 批处理" value="cmd" />
-                  <el-option label="PowerShell" value="powershell" />
-                </el-select>
-                <el-button type="danger" plain :icon="Delete" @click="scripts.splice(i, 1)" />
+        <div v-if="!isDD" class="grid gap-1.5">
+          <Label>{{ isWindows ? '脚本（Windows：装后走引擎托管首启链；装前仅 setup 通路的 WinPE）' : '脚本' }}</Label>
+          <div class="grid gap-2">
+            <div v-for="(sc, i) in scripts" :key="i" class="rounded-lg border p-3">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <Select v-model="sc.stage">
+                  <SelectTrigger class="w-[240px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pre_install">装前执行（pre_install）</SelectItem>
+                    <SelectItem value="post_install">装后执行（post_install）</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select v-if="isWindows" v-model="sc.shell">
+                  <SelectTrigger class="w-[170px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cmd">cmd 批处理</SelectItem>
+                    <SelectItem value="powershell">PowerShell</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="ghost" size="icon" class="size-8 text-destructive hover:text-destructive" @click="scripts.splice(i, 1)">
+                  <Trash2 class="size-4" />
+                </Button>
               </div>
-              <el-input
+              <Textarea
                 v-model="sc.content"
-                type="textarea"
                 :rows="4"
-                class="mono"
+                class="font-mono"
                 :placeholder="isWindows ? 'rem 或 PowerShell 语句（明文，提交时自动转 base64）' : '#!/bin/sh …（明文，提交时自动转 base64）'"
               />
-            </el-card>
-            <el-button size="small" @click="addScript">+ 添加脚本</el-button>
+            </div>
+            <Button variant="outline" size="sm" class="w-fit" @click="addScript">+ 添加脚本</Button>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item label="引导方式">
-          <el-radio-group
+        <div class="grid gap-1.5">
+          <Label>引导方式</Label>
+          <RadioGroup
             v-model="spec.boot!.strategy"
             :disabled="isWindows && policyDraftInstaller === 'agent'"
+            class="flex gap-2 disabled:opacity-60 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
           >
-            <el-radio-button value="virtual_media">虚拟介质</el-radio-button>
-            <el-radio-button value="pxe">PXE</el-radio-button>
-          </el-radio-group>
-          <div v-if="spec.boot?.strategy === 'pxe' && !conn.capabilities?.netboot_enabled" class="hint" style="color: #e6a23c">
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="virtual_media" /> 虚拟介质</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="pxe" /> PXE</Label>
+          </RadioGroup>
+          <p v-if="spec.boot?.strategy === 'pxe' && !conn.capabilities?.netboot_enabled" class="text-xs text-amber-600 dark:text-amber-400">
             引擎未启用 netboot，PXE 提交会被拒绝。
-          </div>
-          <div v-else-if="!isDD && spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="hint">
+          </p>
+          <p v-else-if="!isDD && spec.boot?.strategy === 'virtual_media' && imageMode === 'library'" class="text-xs leading-relaxed text-muted-foreground">
             Rocky9 系介质的 vMedia 是引导型 CD（介质上无安装包）：安装源需为 nfs:// 或 http(s) 树 URL——镜像库引用（image.id）建议搭配 PXE 使用。
-          </div>
-          <div v-if="hasHeadlessTarget" style="width: 100%; margin-top: 6px">
-            <div class="hint" style="color: #e6a23c">
+          </p>
+          <div v-if="hasHeadlessTarget" class="grid gap-1.5">
+            <p class="text-xs text-amber-600 dark:text-amber-400">
               含 {{ headlessTargets.length }} 台无带外机器（protocol=none）：PXE-only，引导等待窗内无 PXE sighting
               将告警并等待人工上电（任务超时为总上限）。
+            </p>
+            <div class="flex items-center gap-3">
+              <NumberInput v-model="evidenceWait" :min="60" :max="3600" :step="60" class="w-32" />
+              <span class="text-xs text-muted-foreground">引导证据等待窗（秒；0 = 引擎缺省 10 分钟）</span>
             </div>
-            <el-input-number
-              v-model="evidenceWait"
-              :min="60"
-              :max="3600"
-              :step="60"
-              style="margin-top: 4px"
-            />
-            <span class="hint" style="margin-left: 8px">引导证据等待窗（秒；0 = 引擎缺省 10 分钟）</span>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item v-if="!isWindows" label="内核参数（排障逃生口）">
-          <div style="width: 100%">
-            <el-input
+        <div v-if="!isWindows" class="grid gap-1.5">
+          <Label>内核参数（排障逃生口）</Label>
+          <div class="grid gap-1.5">
+            <Input
               v-model="kernelArgs"
-              class="mono"
+              class="font-mono"
               placeholder="安装器引导行追加，例：nomodeset modprobe.blacklist=nouveau"
             />
-            <el-input
+            <Input
               v-model="installedKernelArgs"
-              class="mono"
-              style="margin-top: 6px"
+              class="font-mono"
               placeholder="装好的系统持久化，例：modprobe.blacklist=nouveau"
             />
-            <div class="hint">
+            <p class="text-xs leading-relaxed text-muted-foreground">
               无人值守装机的"GRUB 按 e"替代：安装器内核被硬件挂死（典型：GPU 触发 nouveau
               卡死）时，上行走安装阶段、下行走装好后的系统首启（装上厂商驱动前同样会挂）。空白分隔；
               BOOTIF/ip/console/inst.ks 等引擎自有参数不可声明，引号与分号不支持。
-            </div>
+            </p>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item v-if="isWindows" label="安装通路（windows 专用）">
-          <el-radio-group v-model="policyDraftInstaller">
-            <el-radio-button value="auto">自动（按部署事实）</el-radio-button>
-            <el-radio-button value="setup">setup（需 SMB 导出）</el-radio-button>
-            <el-radio-button value="agent">agent（PXE-only，无需 SMB）</el-radio-button>
-          </el-radio-group>
-          <div class="hint">
+        <div v-if="isWindows" class="grid gap-1.5">
+          <Label>安装通路（windows 专用）</Label>
+          <RadioGroup
+            v-model="policyDraftInstaller"
+            class="flex flex-wrap gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+          >
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="auto" /> 自动（按部署事实）</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="setup" /> setup（需 SMB 导出）</Label>
+            <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="agent" /> agent（PXE-only，无需 SMB）</Label>
+          </RadioGroup>
+          <p class="text-xs leading-relaxed text-muted-foreground">
             Windows 仅支持 UEFI 引导。setup = setup.exe 黑盒，依赖部署层 SMB 导出（MAMMOTH_WINDOWS_INSTALL_SMB_UNC）；
             agent = alpine agent wimlib 铺盘，依赖 extended ISO 池 + PXE（无需 SMB）。
             当前部署：SMB 导出 {{ conn.capabilities?.windows_smb_share ? '已配置' : '未配置' }} ·
             agent 通路 {{ conn.capabilities?.windows_agent_installer ? '可用' : '不可用' }}。
-          </div>
-        </el-form-item>
-      </el-form>
-
-      <div class="step-actions">
-        <el-button @click="back">上一步</el-button>
-        <el-button type="primary" @click="next">下一步：试算预览</el-button>
+          </p>
+        </div>
       </div>
-    </el-card>
+
+      <div class="mt-5 flex items-center justify-between">
+        <Button variant="outline" @click="back">上一步</Button>
+        <Button @click="next">下一步：试算预览</Button>
+      </div>
+    </Card>
 
     <!-- Step 3 -->
-    <el-card v-else-if="step === 3" shadow="never" v-loading="planning">
-      <template v-if="planning">正在对 {{ readyTargets.length }} 台机器运行只读试算…</template>
-      <template v-else>
-        <div v-for="r in planResults" :key="r.machineId" class="plan-block">
-          <div class="plan-head">
-            <span class="mono">{{ r.machineId }}</span>
-            <el-tag v-if="r.ok" type="success" size="small">试算通过</el-tag>
-            <el-tag v-else type="danger" size="small">试算失败</el-tag>
+    <Card v-else-if="step === 3">
+      <CardContent>
+        <div v-if="planning" class="flex flex-col items-center gap-3 py-10">
+          <Skeleton class="h-4 w-64" />
+          <p class="text-sm text-muted-foreground">正在对 {{ readyTargets.length }} 台机器运行只读试算…</p>
+        </div>
+        <template v-else>
+          <div class="flex flex-col gap-4">
+            <div v-for="r in planResults" :key="r.machineId">
+              <div class="mb-2 flex items-center gap-2.5">
+                <span class="font-mono text-sm">{{ r.machineId }}</span>
+                <Badge
+                  v-if="r.ok"
+                  variant="outline"
+                  class="rounded-md font-medium"
+                  :style="{ color: '#10b981', borderColor: '#10b98155', backgroundColor: '#10b9811a' }"
+                >
+                  试算通过
+                </Badge>
+                <Badge v-else variant="outline" class="rounded-md font-medium" :style="{ color: '#ef4444', borderColor: '#ef444455', backgroundColor: '#ef44441a' }">
+                  试算失败
+                </Badge>
+              </div>
+              <template v-if="r.ok && r.plan">
+                <Alert v-for="(w, i) in r.plan.warnings ?? []" :key="i" class="mb-2 border-amber-500/40 bg-amber-500/5">
+                  <AlertDescription>{{ w }}</AlertDescription>
+                </Alert>
+                <div class="overflow-hidden rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow class="bg-muted/50 hover:bg-muted/50">
+                        <TableHead class="w-28">设备</TableHead>
+                        <TableHead class="min-w-[150px]">serial</TableHead>
+                        <TableHead class="w-28">容量</TableHead>
+                        <TableHead class="w-20">保留</TableHead>
+                        <TableHead class="min-w-[200px]">计划分区</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow v-for="row in r.plan.resolved_disks" :key="row.device">
+                        <TableCell><span class="font-mono text-xs">{{ row.device }}</span></TableCell>
+                        <TableCell><span class="font-mono text-xs">{{ row.serial || '—' }}</span></TableCell>
+                        <TableCell class="text-muted-foreground">{{ formatBytes(row.size_bytes) }}</TableCell>
+                        <TableCell class="text-muted-foreground">{{ row.keep ? '是' : '否' }}</TableCell>
+                        <TableCell>
+                          <span class="font-mono text-[11px]">
+                            {{ (row.planned_partitions || []).map((p: { number: number; mount: string }) => `${p.number}:${p.mount}`).join(' ') }}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </template>
+              <Alert v-else-if="!r.ok" variant="destructive" class="mb-2">
+                <AlertTitle>{{ r.error }}</AlertTitle>
+              </Alert>
+            </div>
+            <div class="flex items-center justify-between">
+              <Button variant="outline" @click="back">上一步</Button>
+              <Button :disabled="!planAllOk" @click="step = 4">下一步：执行策略</Button>
+            </div>
           </div>
-          <template v-if="r.ok && r.plan">
-            <el-alert
-              v-for="(w, i) in r.plan.warnings ?? []"
-              :key="i"
-              :title="w"
-              type="warning"
-              :closable="false"
-              class="plan-warning"
-            />
-            <el-table :data="r.plan.resolved_disks" size="small">
-              <el-table-column prop="device" label="设备" width="110" />
-              <el-table-column label="serial" min-width="150">
-                <template #default="{ row }"><span class="mono">{{ row.serial || '—' }}</span></template>
-              </el-table-column>
-              <el-table-column label="容量" width="110">
-                <template #default="{ row }">{{ formatBytes(row.size_bytes) }}</template>
-              </el-table-column>
-              <el-table-column label="保留" width="80">
-                <template #default="{ row }">{{ row.keep ? '是' : '否' }}</template>
-              </el-table-column>
-              <el-table-column label="计划分区" min-width="220">
-                <template #default="{ row }">
-                  <span class="mono" style="font-size: 11px">
-                    {{ (row.planned_partitions || []).map((p: { number: number; mount: string }) => `${p.number}:${p.mount}`).join(' ') }}
-                  </span>
-                </template>
-              </el-table-column>
-            </el-table>
-          </template>
-          <el-alert v-else-if="!r.ok" :title="r.error" type="error" :closable="false" class="plan-warning" />
-        </div>
-        <div class="step-actions">
-          <el-button @click="back">上一步</el-button>
-          <el-button type="primary" :disabled="!planAllOk" @click="step = 4">下一步：执行策略</el-button>
-        </div>
-      </template>
-    </el-card>
+        </template>
+      </CardContent>
+    </Card>
 
     <!-- Step 4 -->
-    <el-card v-else-if="step === 4" shadow="never">
-      <el-form label-position="top" style="max-width: 560px">
-        <el-form-item label="并发数">
-          <el-input-number v-model="policy.concurrency" :min="1" :max="100" />
-        </el-form-item>
-        <el-form-item label="单机失败后">
-          <el-radio-group v-model="policy.on_task_failure">
-            <el-radio-button value="continue">继续其余机器</el-radio-button>
-            <el-radio-button value="abort_batch">中止整批</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="单机超时（秒）">
-          <el-input-number v-model="policy.task_timeout_seconds" :min="60" :step="300" />
-        </el-form-item>
-        <el-form-item label="装前健康门禁（依据内存盘探针的逐盘 smartctl/nvme 读数）">
-          <el-radio-group v-model="policy.health_gate">
-            <el-radio-button value="off">关闭</el-radio-button>
-            <el-radio-button value="report">报告</el-radio-button>
-            <el-radio-button value="block">拦截</el-radio-button>
-          </el-radio-group>
-          <div class="hint">{{ HEALTH_GATE_DESC[policy.health_gate] }}</div>
-        </el-form-item>
-      </el-form>
-      <div class="step-actions">
-        <el-button @click="back">上一步</el-button>
-        <el-button type="primary" :loading="submittingJob" @click="submit">
-          提交装机任务（{{ readyTargets.length }} 台）
-        </el-button>
-      </div>
-    </el-card>
+    <Card v-else-if="step === 4">
+      <CardContent class="max-w-[560px]">
+        <div class="grid gap-5">
+          <div class="grid gap-1.5">
+            <Label for="policy-concurrency">并发数</Label>
+            <NumberInput id="policy-concurrency" v-model="policy.concurrency" :min="1" :max="100" class="w-32" />
+          </div>
+          <div class="grid gap-1.5">
+            <Label>单机失败后</Label>
+            <RadioGroup
+              v-model="policy.on_task_failure"
+              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+            >
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="continue" /> 继续其余机器</Label>
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="abort_batch" /> 中止整批</Label>
+            </RadioGroup>
+          </div>
+          <div class="grid gap-1.5">
+            <Label for="policy-timeout">单机超时（秒）</Label>
+            <NumberInput id="policy-timeout" v-model="policy.task_timeout_seconds" :min="60" :step="300" class="w-40" />
+          </div>
+          <div class="grid gap-1.5">
+            <Label>装前健康门禁（依据内存盘探针的逐盘 smartctl/nvme 读数）</Label>
+            <RadioGroup
+              v-model="policy.health_gate"
+              class="flex gap-2 [&_[data-slot=radio-group-item]]:border [&_[data-slot=radio-group-item]]:rounded-md [&_[data-slot=radio-group-item]]:px-3 [&_[data-slot=radio-group-item]]:py-1.5 [&_[data-slot=radio-group-item]]:text-xs"
+            >
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="off" /> 关闭</Label>
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="report" /> 报告</Label>
+              <Label class="flex cursor-pointer items-center gap-1.5 font-normal"><RadioGroupItem value="block" /> 拦截</Label>
+            </RadioGroup>
+            <p class="text-xs leading-relaxed text-muted-foreground">{{ HEALTH_GATE_DESC[policy.health_gate] }}</p>
+          </div>
+        </div>
+        <div class="mt-5 flex items-center justify-between">
+          <Button variant="outline" @click="back">上一步</Button>
+          <Button :disabled="submittingJob" @click="submit">
+            <LoaderCircle v-if="submittingJob" class="size-4 animate-spin" />
+            提交装机任务（{{ readyTargets.length }} 台）
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   </div>
 </template>
 
-<style scoped>
-.step-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 16px;
-}
-.plan-block {
-  margin-bottom: 16px;
-}
-.plan-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.plan-warning {
-  margin-bottom: 8px;
-}
-.repo-row,
-.part-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-  width: 100%;
-}
-.inline-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.hint {
-  margin-top: 6px;
-  width: 100%;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.6;
-}
-.disk-block,
-.script-block {
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-}
-.disk-head,
-.script-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.part-editor {
-  margin: 8px 0;
-}
-.part-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-.mono :deep(input),
-.mono :deep(textarea),
-.mono {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
-.net-block {
-  padding: 8px 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  margin-bottom: 8px;
-}
-.bond-members {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding-left: 14px;
-}
-.net-add {
-  display: flex;
-  gap: 6px;
-}
-.matrix-table {
-  width: 100%;
-  margin-top: 6px;
-}
-.kind-tag {
-  flex-shrink: 0;
-}
-</style>
