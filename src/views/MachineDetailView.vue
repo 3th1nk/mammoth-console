@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ArrowLeft, RefreshCcw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
 import { unwrap, errorMessage } from '@/api/problem'
 import {
@@ -44,6 +45,7 @@ import { formatBytes, formatTime } from '@/utils/format'
 type Machine = components['schemas']['Machine']
 
 const props = defineProps<{ id: string }>()
+const { t } = useI18n()
 const router = useRouter()
 const queryClient = useQueryClient()
 
@@ -147,7 +149,7 @@ async function assignBaseline() {
       params: { path: { id: props.id } },
       body: { profile_id: selectedProfileId.value },
     }))
-    toast.success(`基线已赋值：${profilesQuery.data.value?.find((p) => p.id === selectedProfileId.value)?.name ?? selectedProfileId.value}`)
+    toast.success(t('machineDetail.assigned', { name: profilesQuery.data.value?.find((p) => p.id === selectedProfileId.value)?.name ?? selectedProfileId.value }))
     selectedProfileId.value = ''
     void profilesQuery.refetch()
     // 「当前基线」标签来自 machine.bios_profile_id：不失效 machine 查询
@@ -160,9 +162,9 @@ async function assignBaseline() {
 }
 async function clearBaseline() {
   const ok = await confirm({
-    title: '解除基线绑定',
-    description: '解除后这台机器不再有漂移比对参照（不会改动机器的 BIOS 设置）。',
-    confirmText: '解除',
+    title: t('machineDetail.assignConfirmTitle'),
+    description: t('machineDetail.assignConfirmDesc'),
+    confirmText: t('machineDetail.assignConfirmText'),
   })
   if (!ok) return
   try {
@@ -170,7 +172,7 @@ async function clearBaseline() {
       params: { path: { id: props.id } },
       body: { profile_id: null },
     }))
-    toast.success('基线绑定已解除')
+    toast.success(t('machineDetail.unbound'))
     driftData.value = null
     // 同 assignBaseline：解除后「当前基线」标签要即时归零
     void queryClient.invalidateQueries({ queryKey: machineKey(props.id) })
@@ -201,7 +203,7 @@ async function openKvm() {
     )
     window.open(res.url, '_blank', 'noopener')
   } catch (e) {
-    toast.warning(`${errorMessage(e)}（KVM 依赖控制器能力，多数机型暂不支持）`)
+    toast.warning(t('machineDetail.kvmTip', { msg: errorMessage(e) }))
   } finally {
     kvmLoading.value = false
   }
@@ -214,29 +216,31 @@ const HEALTH_TONE: Record<string, StateTone> = {
   unknown: 'neutral',
 }
 const HEALTH_LABEL: Record<string, string> = {
-  ok: '正常',
-  warning: '警告',
-  critical: '严重',
-  unknown: '未知',
+  ok: 'machineDetail.stateOk',
+  warning: 'machineDetail.colHealth',
+  critical: 'states.machineError',
+  unknown: 'states.powerUnknown',
 }
 
 function healthBadge(state?: string) {
   const tone = HEALTH_TONE[state ?? ''] ?? 'neutral'
-  return { label: HEALTH_LABEL[state ?? ''] ?? state, style: toneBadgeStyle(tone) }
+  const key = HEALTH_LABEL[state ?? ''] ?? 'states.powerUnknown'
+  return { label: t(key), style: toneBadgeStyle(tone) }
 }
 
 const VERDICT_TONE: Record<string, StateTone> = { pass: 'success', degraded: 'warning', fail: 'danger' }
-const VERDICT_LABEL: Record<string, string> = { pass: '通过', degraded: '降级', fail: '不符' }
+const VERDICT_LABEL: Record<string, string> = { pass: 'machineDetail.checkOk', degraded: 'machineDetail.colStatus', fail: 'machineDetail.checkMismatch' }
 const CHECK_LABEL: Record<string, string> = {
-  system_facts: '系统事实',
-  hostname: '主机名',
-  storage_mounts: '存储挂载',
-  boot_cmdline: '引导行',
+  system_facts: 'machineDetail.serial',
+  hostname: 'machineDetail.assignConfirmTitle',
+  storage_mounts: 'machineDetail.dcEvidence',
+  boot_cmdline: 'wizard.kernelArgs',
 }
 
 function verdictBadge(verdict: string) {
   const tone = VERDICT_TONE[verdict] ?? 'neutral'
-  return { label: VERDICT_LABEL[verdict] ?? verdict, style: toneBadgeStyle(tone) }
+  const key = VERDICT_LABEL[verdict] ?? 'machineDetail.dcBadge'
+  return { label: t(key), style: toneBadgeStyle(tone) }
 }
 
 const title = computed(() => {
@@ -252,7 +256,7 @@ const title = computed(() => {
       <div class="flex min-w-0 items-center gap-3">
         <Button variant="ghost" size="icon" class="size-8 shrink-0" @click="router.push({ name: 'machines' })">
           <ArrowLeft class="size-4" />
-          <span class="sr-only">返回列表</span>
+          <span class="sr-only">{{ t('machineDetail.backToList') }}</span>
         </Button>
         <h2 class="truncate font-mono text-xl font-bold tracking-tight">{{ title }}</h2>
         <StateBadge v-if="machine" kind="machine" :state="machine.state" />
@@ -267,11 +271,11 @@ const title = computed(() => {
           :disabled="kvmLoading"
           @click="openKvm"
         >
-          控制台
+          {{ t('machines.console') }}
         </Button>
         <MachineActions v-if="machine" :machine-id="machine.id" :bmc="machine.bmc" @submitted="query.refetch()" />
         <Button variant="outline" size="sm" @click="query.refetch()">
-          <RefreshCcw class="size-4" /> 刷新
+          <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
         </Button>
       </div>
     </div>
@@ -283,39 +287,39 @@ const title = computed(() => {
 
     <template v-else-if="machine">
       <Alert v-if="machine.last_error" variant="destructive">
-        <AlertTitle>上一次错误：{{ machine.last_error.code ?? '' }}</AlertTitle>
+        <AlertTitle>{{ t('machineDetail.lastError', { code: machine.last_error.code ?? '' }) }}</AlertTitle>
         <AlertDescription>{{ machine.last_error.message }}</AlertDescription>
       </Alert>
 
       <Card>
-        <CardHeader><CardTitle class="text-base">基础信息</CardTitle></CardHeader>
+        <CardHeader><CardTitle class="text-base">{{ t('machineDetail.basic') }}</CardTitle></CardHeader>
         <CardContent>
           <DescriptionList :columns="3">
-            <DescriptionItem label="机器 ID" mono>{{ machine.id }}</DescriptionItem>
-            <DescriptionItem label="BMC 地址" mono>{{ machine.bmc.address }}</DescriptionItem>
-            <DescriptionItem label="协议">{{ machine.bmc.protocol ?? '—' }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.machineId')" mono>{{ machine.id }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.bmcAddress')" mono>{{ machine.bmc.address }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.protocol')">{{ machine.bmc.protocol ?? '—' }}</DescriptionItem>
             <!-- headless:带外字段无值可填,以「无带外」占位;BMC 地址是 none://<MAC> 机器身份,照实显示 -->
-            <DescriptionItem label="厂商">
-              <span v-if="headless" class="text-muted-foreground">无带外</span>
+            <DescriptionItem :label="t('machineDetail.vendor')">
+              <span v-if="headless" class="text-muted-foreground">{{ t('machineDetail.headless') }}</span>
               <template v-else>{{ machine.bmc.vendor || '—' }}</template>
             </DescriptionItem>
-            <DescriptionItem label="型号">
-              <span v-if="headless" class="text-muted-foreground">无带外</span>
+            <DescriptionItem :label="t('machineDetail.model')">
+              <span v-if="headless" class="text-muted-foreground">{{ t('machineDetail.headless') }}</span>
               <template v-else>{{ machine.bmc.model || '—' }}</template>
             </DescriptionItem>
-            <DescriptionItem label="控制器固件">
-              <span v-if="headless" class="text-muted-foreground">无带外</span>
+            <DescriptionItem :label="t('machineDetail.firmware')">
+              <span v-if="headless" class="text-muted-foreground">{{ t('machineDetail.headless') }}</span>
               <template v-else>{{ machine.bmc.firmware_version || '—' }}</template>
             </DescriptionItem>
-            <DescriptionItem label="BMC 凭证" mono>
-              <span v-if="headless" class="text-muted-foreground">无带外</span>
+            <DescriptionItem :label="t('machineDetail.bmcCredential')" mono>
+              <span v-if="headless" class="text-muted-foreground">{{ t('machineDetail.headless') }}</span>
               <template v-else>{{ machine.bmc.credential_id }}</template>
             </DescriptionItem>
-            <DescriptionItem label="SSH 凭证" mono>{{ machine.ssh_credential_id || '—' }}</DescriptionItem>
-            <DescriptionItem label="带内地址" mono>{{ machine.ssh?.address || '—' }}</DescriptionItem>
-            <DescriptionItem label="注册时间">{{ formatTime(machine.created_at) }}</DescriptionItem>
-            <DescriptionItem label="更新时间">{{ formatTime(machine.updated_at) }}</DescriptionItem>
-            <DescriptionItem label="标签">
+            <DescriptionItem :label="t('machineDetail.sshCredential')" mono>{{ machine.ssh_credential_id || '—' }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.sshAddress')" mono>{{ machine.ssh?.address || '—' }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.createdAt')">{{ formatTime(machine.created_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.updatedAt')">{{ formatTime(machine.updated_at) }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.labels')">
               <div class="flex flex-wrap gap-1">
                 <span
                   v-for="(v, k) in machine.labels"
@@ -332,16 +336,16 @@ const title = computed(() => {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle class="text-base">硬件规格（探针采集）</CardTitle></CardHeader>
+        <CardHeader><CardTitle class="text-base">{{ t('machineDetail.hardware') }}</CardTitle></CardHeader>
         <CardContent class="flex flex-col gap-3">
           <Alert v-if="hardware?.coverage === 'partial'" class="border-amber-500/40 bg-amber-500/5">
-            <AlertTitle class="text-amber-700 dark:text-amber-400">本次盘查存在盲区（coverage=partial）</AlertTitle>
-            <AlertDescription>{{ hardware.coverage_notes?.join('；') || '厂商能力矩阵命中已知盲区' }}</AlertDescription>
+            <AlertTitle class="text-amber-700 dark:text-amber-400">{{ t('machineDetail.coveragePartial') }}</AlertTitle>
+            <AlertDescription>{{ hardware.coverage_notes?.join('；') || t('machineDetail.coverageNotes') }}</AlertDescription>
           </Alert>
           <DescriptionList :columns="3">
-            <DescriptionItem label="整机序列号" mono>{{ hardware?.serial_number || '—' }}</DescriptionItem>
-            <DescriptionItem label="CPU">{{ hardware?.cpu?.model || '—' }}</DescriptionItem>
-            <DescriptionItem label="核数 / 内存">
+            <DescriptionItem :label="t('machineDetail.serial')" mono>{{ hardware?.serial_number || '—' }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.cpu')">{{ hardware?.cpu?.model || '—' }}</DescriptionItem>
+            <DescriptionItem :label="t('machineDetail.coresMemory')">
               {{ hardware?.cpu?.cores ?? '—' }}C · {{ formatBytes(hardware?.memory_bytes) }}
             </DescriptionItem>
           </DescriptionList>
@@ -350,13 +354,13 @@ const title = computed(() => {
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="w-28">磁盘</TableHead>
-                  <TableHead class="min-w-[150px]">序列号</TableHead>
-                  <TableHead class="w-28">容量</TableHead>
-                  <TableHead class="w-20">健康</TableHead>
-                  <TableHead class="w-20">介质</TableHead>
-                  <TableHead class="w-28">协议</TableHead>
-                  <TableHead class="w-20">可拔除</TableHead>
+                  <TableHead class="w-28">{{ t('machineDetail.colDisk') }}</TableHead>
+                  <TableHead class="min-w-[150px]">{{ t('machineDetail.colDiskSerial') }}</TableHead>
+                  <TableHead class="w-28">{{ t('machineDetail.colSize') }}</TableHead>
+                  <TableHead class="w-20">{{ t('machineDetail.colHealth') }}</TableHead>
+                  <TableHead class="w-20">{{ t('machineDetail.colMedium') }}</TableHead>
+                  <TableHead class="w-28">{{ t('machineDetail.colDiskProtocol') }}</TableHead>
+                  <TableHead class="w-20">{{ t('machineDetail.colRemovable') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -373,26 +377,26 @@ const title = computed(() => {
                     >
                       {{ diskHealthBySerial.get(row.serial) }}
                     </Badge>
-                    <span v-else class="text-xs text-muted-foreground" title="无盘查健康数据（不代表不健康）">—</span>
+                    <span v-else class="text-xs text-muted-foreground" :title="t('machineDetail.noSerial')">—</span>
                   </TableCell>
                   <TableCell class="text-muted-foreground">{{ row.medium }}</TableCell>
                   <TableCell class="text-muted-foreground">{{ row.protocol }}</TableCell>
-                  <TableCell class="text-muted-foreground">{{ row.removable ? '是' : '否' }}</TableCell>
+                  <TableCell class="text-muted-foreground">{{ row.removable ? '✓' : '—' }}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="(hardware?.disks ?? []).length === 0" description="尚无磁盘信息（盘查完成后回填）" />
+            <EmptyState v-if="(hardware?.disks ?? []).length === 0" :description="t('machineDetail.disksEmpty')" />
           </div>
 
           <div class="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="w-28">网卡</TableHead>
-                  <TableHead class="min-w-[150px]">MAC</TableHead>
-                  <TableHead class="w-32">速率</TableHead>
-                  <TableHead class="w-20">链路</TableHead>
-                  <TableHead class="min-w-[160px]">PCI 地址</TableHead>
+                  <TableHead class="w-28">{{ t('machineDetail.colNic') }}</TableHead>
+                  <TableHead class="min-w-[150px]">{{ t('machineDetail.colMac') }}</TableHead>
+                  <TableHead class="w-32">{{ t('machineDetail.colSpeed') }}</TableHead>
+                  <TableHead class="w-20">{{ t('machineDetail.colLink') }}</TableHead>
+                  <TableHead class="min-w-[160px]">{{ t('machineDetail.colPci') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -413,17 +417,17 @@ const title = computed(() => {
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="(hardware?.nics ?? []).length === 0" description="尚无网卡信息（盘查完成后回填）" />
+            <EmptyState v-if="(hardware?.nics ?? []).length === 0" :description="t('machineDetail.nicsEmpty')" />
           </div>
         </CardContent>
       </Card>
 
       <Card v-if="!headless">
         <CardHeader>
-          <CardTitle class="text-base">硬件健康（BMC 实时读）</CardTitle>
+          <CardTitle class="text-base">{{ t('machineDetail.health') }}</CardTitle>
           <CardAction>
             <Button variant="outline" size="sm" :disabled="healthQuery.isFetching.value" @click="healthQuery.refetch()">
-              <RefreshCcw class="size-4" /> 重新读取
+              <RefreshCcw class="size-4" /> {{ t('machineDetail.reread') }}
             </Button>
           </CardAction>
         </CardHeader>
@@ -433,7 +437,7 @@ const title = computed(() => {
           </Alert>
           <template v-else-if="healthQuery.data.value">
             <div class="flex items-center gap-2.5 text-sm">
-              <span class="text-muted-foreground">整体结论（worst-of）</span>
+              <span class="text-muted-foreground">{{ t('machineDetail.overall') }}</span>
               <Badge
                 variant="outline"
                 class="rounded-md font-medium"
@@ -446,9 +450,9 @@ const title = computed(() => {
               <Table>
                 <TableHeader>
                   <TableRow class="bg-muted/50 hover:bg-muted/50">
-                    <TableHead class="min-w-[200px]">传感器</TableHead>
-                    <TableHead class="w-36">读数</TableHead>
-                    <TableHead class="w-28">状态</TableHead>
+                    <TableHead class="min-w-[200px]">{{ t('machineDetail.colName') }}</TableHead>
+                    <TableHead class="w-36">{{ t('machineDetail.reading') }}</TableHead>
+                    <TableHead class="w-28">{{ t('machineDetail.colStatus') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -465,19 +469,19 @@ const title = computed(() => {
                   </TableRow>
                 </TableBody>
               </Table>
-              <EmptyState v-if="(healthQuery.data.value.sensors ?? []).length === 0" description="控制器未上报传感器" />
+              <EmptyState v-if="(healthQuery.data.value.sensors ?? []).length === 0" :description="t('machineDetail.sensorsEmpty')" />
             </div>
           </template>
-          <p v-else class="text-sm text-muted-foreground">正在读取…</p>
+          <p v-else class="text-sm text-muted-foreground">{{ t('machineDetail.reading') }}</p>
         </CardContent>
       </Card>
 
       <Card v-if="!headless">
         <CardHeader>
-          <CardTitle class="text-base">SEL 硬件日志（最近 500 条）</CardTitle>
+          <CardTitle class="text-base">{{ t('machineDetail.sel') }}</CardTitle>
           <CardAction>
             <Button variant="outline" size="sm" :disabled="selQuery.isFetching.value" @click="selQuery.refetch()">
-              <RefreshCcw class="size-4" /> 重新读取
+              <RefreshCcw class="size-4" /> {{ t('machineDetail.reread') }}
             </Button>
           </CardAction>
         </CardHeader>
@@ -489,9 +493,9 @@ const title = computed(() => {
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="w-24">级别</TableHead>
-                  <TableHead class="w-48">时间</TableHead>
-                  <TableHead class="min-w-[300px]">事件</TableHead>
+                  <TableHead class="w-24">{{ t('machineDetail.colLevel') }}</TableHead>
+                  <TableHead class="w-48">{{ t('machineDetail.colTime') }}</TableHead>
+                  <TableHead class="min-w-[300px]">{{ t('machineDetail.colEvent') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -506,23 +510,23 @@ const title = computed(() => {
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="(selQuery.data.value.entries ?? []).length === 0" description="SEL 无记录" />
+            <EmptyState v-if="(selQuery.data.value.entries ?? []).length === 0" :description="t('machineDetail.selEmpty')" />
           </div>
-          <p v-else class="text-sm text-muted-foreground">正在读取…</p>
+          <p v-else class="text-sm text-muted-foreground">{{ t('machineDetail.reading') }}</p>
         </CardContent>
       </Card>
 
       <!-- 固件清单仅 Redfish 盘查产出,headless 机器永远为空——整卡隐藏 -->
       <Card v-if="!headless">
-        <CardHeader><CardTitle class="text-base">控制器固件清单（仅 Redfish 盘查产出）</CardTitle></CardHeader>
+        <CardHeader><CardTitle class="text-base">{{ t('machineDetail.firmwareInventory') }}</CardTitle></CardHeader>
         <CardContent>
           <div class="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="min-w-[200px]">组件 ID</TableHead>
-                  <TableHead class="min-w-[200px]">名称</TableHead>
-                  <TableHead class="min-w-[160px]">版本</TableHead>
+                  <TableHead class="min-w-[200px]">{{ t('machineDetail.colComponent') }}</TableHead>
+                  <TableHead class="min-w-[200px]">{{ t('machineDetail.colName') }}</TableHead>
+                  <TableHead class="min-w-[160px]">{{ t('machineDetail.colVersion') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -533,7 +537,7 @@ const title = computed(() => {
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="(machine.firmware ?? []).length === 0" description="无固件清单（IPMI 协议或尚未盘查）" />
+            <EmptyState v-if="(machine.firmware ?? []).length === 0" :description="t('machineDetail.firmwareEmpty')" />
           </div>
         </CardContent>
       </Card>
@@ -542,7 +546,7 @@ const title = computed(() => {
            headless 无 BMC 活读,漂移比对无从谈起——整卡隐藏 -->
       <Card v-if="!headless">
         <CardHeader>
-          <CardTitle class="text-base">BIOS 基线与漂移</CardTitle>
+          <CardTitle class="text-base">{{ t('machineDetail.bios') }}</CardTitle>
           <CardAction>
             <TooltipProvider :delay-duration="200">
               <Tooltip>
@@ -554,22 +558,22 @@ const title = computed(() => {
                     :loading="driftReading"
                     @click="driftRead()"
                   >
-                    <RefreshCcw class="size-4" /> 读取漂移
+                    <RefreshCcw class="size-4" /> {{ t('machineDetail.readDrift') }}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>实时读取 BMC 属性表并逐项比对基线，可能需要数十秒</TooltipContent>
+                <TooltipContent>{{ t('machineDetail.readDriftTip') }}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </CardAction>
         </CardHeader>
         <CardContent class="flex flex-col gap-3">
           <div class="flex flex-wrap items-center gap-2.5">
-            <span class="text-sm text-muted-foreground">当前基线</span>
+            <span class="text-sm text-muted-foreground">{{ t('machineDetail.currentBaseline') }}</span>
             <Badge v-if="profileName" variant="outline" class="rounded-md font-medium">{{ profileName }}</Badge>
-            <Badge v-else variant="outline" class="rounded-md font-medium text-muted-foreground">未赋值</Badge>
+            <Badge v-else variant="outline" class="rounded-md font-medium text-muted-foreground">{{ t('machineDetail.baselineUnset') }}</Badge>
             <Select v-model="selectedProfileId">
               <SelectTrigger class="w-[240px]">
-                <SelectValue placeholder="选择基线（选中后点赋值）" />
+                <SelectValue :placeholder="t('machineDetail.baselinePlaceholder')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="p in profilesQuery.data.value ?? []" :key="p.id" :value="p.id">
@@ -577,7 +581,7 @@ const title = computed(() => {
                 </SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" :disabled="!selectedProfileId" @click="assignBaseline">赋值</Button>
+            <Button variant="outline" size="sm" :disabled="!selectedProfileId" @click="assignBaseline">{{ t('machineDetail.assign') }}</Button>
             <Button
               variant="ghost"
               size="sm"
@@ -585,32 +589,32 @@ const title = computed(() => {
               :disabled="!driftEnabled"
               @click="clearBaseline"
             >
-              解除绑定
+              {{ t('machineDetail.unbind') }}
             </Button>
           </div>
           <p class="text-xs leading-relaxed text-muted-foreground">
-            赋值只设定漂移比对的参照，不会写入机器 BIOS。
-            <template v-if="!driftEnabled">赋值后即可在这里对照基线读取漂移（匹配 / 漂移 / 未知）。</template>
+            {{ t('machineDetail.baselineHint') }}
+            <template v-if="!driftEnabled">{{ t('machineDetail.baselineHintPost') }}</template>
           </p>
           <template v-if="driftData?.drift">
             <div class="flex flex-wrap items-center gap-2">
               <Badge variant="outline" class="rounded-md font-medium" :style="toneBadgeStyle('success')">
-                匹配 {{ driftData.drift.matched }}
+                {{ t('machineDetail.driftMatched', { n: driftData.drift.matched }) }}
               </Badge>
               <Badge v-if="driftData.drift.drifted" variant="outline" class="rounded-md font-medium" :style="toneBadgeStyle('warning')">
-                漂移 {{ Object.keys(driftData.drift.drifted).length }}
+                {{ t('machineDetail.driftDrifted', { n: Object.keys(driftData.drift.drifted).length }) }}
               </Badge>
               <Badge v-if="driftData.drift.unknown?.length" variant="outline" class="rounded-md font-medium" :style="toneBadgeStyle('danger')">
-                未知 {{ driftData.drift.unknown.length }}
+                {{ t('machineDetail.driftUnknown', { n: driftData.drift.unknown.length }) }}
               </Badge>
             </div>
             <div v-if="driftedEntries.length" class="overflow-hidden rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow class="bg-muted/50 hover:bg-muted/50">
-                    <TableHead class="min-w-[180px]">属性</TableHead>
-                    <TableHead class="min-w-[140px]">基线值</TableHead>
-                    <TableHead class="min-w-[140px]">活值</TableHead>
+                    <TableHead class="min-w-[180px]">{{ t('machineDetail.colAttr') }}</TableHead>
+                    <TableHead class="min-w-[140px]">{{ t('machineDetail.colBaselineValue') }}</TableHead>
+                    <TableHead class="min-w-[140px]">{{ t('machineDetail.colLiveValue') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -623,17 +627,17 @@ const title = computed(() => {
               </Table>
             </div>
             <p v-if="driftData.drift.unknown?.length" class="text-xs text-destructive">
-              活表没有的基线属性：{{ driftData.drift.unknown.join('、') }}（基线先于 BIOS 升级，或属性名笔误）
+              {{ t('machineDetail.driftUnknownNote', { names: driftData.drift.unknown.join('、') }) }}
             </p>
           </template>
-          <p v-else-if="driftReading" class="text-sm text-muted-foreground">BMC 活读中…</p>
+          <p v-else-if="driftReading" class="text-sm text-muted-foreground">{{ t('machineDetail.driftReading') }}</p>
         </CardContent>
       </Card>
 
       <!-- 装后验收报告（roadmap 下一阶段 12）：有报告才显示 -->
       <Card v-if="acceptance">
         <CardHeader>
-          <CardTitle class="text-base">装后验收报告</CardTitle>
+          <CardTitle class="text-base">{{ t('machineDetail.acceptance') }}</CardTitle>
           <CardAction>
             <Badge variant="outline" class="rounded-md font-medium" :style="verdictBadge(acceptance.verdict).style">
               {{ verdictBadge(acceptance.verdict).label }}
@@ -645,31 +649,31 @@ const title = computed(() => {
             <Table>
               <TableHeader>
                 <TableRow class="bg-muted/50 hover:bg-muted/50">
-                  <TableHead class="w-36">检查项</TableHead>
-                  <TableHead class="w-28">状态</TableHead>
-                  <TableHead class="min-w-[260px]">详情</TableHead>
+                  <TableHead class="w-36">{{ t('machineDetail.colCheck') }}</TableHead>
+                  <TableHead class="w-28">{{ t('machineDetail.colStatus') }}</TableHead>
+                  <TableHead class="min-w-[260px]">{{ t('machineDetail.colDetail') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <TableRow v-for="row in acceptance.checks ?? []" :key="row.name">
-                  <TableCell>{{ CHECK_LABEL[row.name] ?? row.name }}</TableCell>
+                  <TableCell>{{ CHECK_LABEL[row.name] ? t(CHECK_LABEL[row.name]) : row.name }}</TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
                       class="rounded-md font-medium"
                       :style="toneBadgeStyle(row.status === 'ok' ? 'success' : row.status === 'mismatch' ? 'danger' : 'warning')"
                     >
-                      {{ row.status === 'ok' ? '符合' : row.status === 'mismatch' ? '不符' : '无数据' }}
+                      {{ row.status === 'ok' ? t('machineDetail.checkOk') : row.status === 'mismatch' ? t('machineDetail.checkMismatch') : t('machineDetail.checkNoData') }}
                     </Badge>
                   </TableCell>
                   <TableCell><span class="font-mono text-xs">{{ row.detail || '—' }}</span></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
-            <EmptyState v-if="(acceptance.checks ?? []).length === 0" description="无验收检查记录" />
+            <EmptyState v-if="(acceptance.checks ?? []).length === 0" :description="t('machineDetail.acceptanceEmpty')" />
           </div>
           <p v-if="acceptance.system" class="text-sm text-muted-foreground">
-            {{ acceptance.system.os }} · 内核 {{ acceptance.system.kernel }} · 主机名 {{ acceptance.system.hostname }}
+            {{ acceptance.system.os }} · kernel {{ acceptance.system.kernel }} · {{ acceptance.system.hostname }}
           </p>
         </CardContent>
       </Card>
@@ -677,9 +681,9 @@ const title = computed(() => {
       <!-- 退役证据（roadmap 下一阶段 18）：有报告才显示 -->
       <Card v-if="dcReport">
         <CardHeader>
-          <CardTitle class="text-base">退役证据</CardTitle>
+          <CardTitle class="text-base">{{ t('machineDetail.dcEvidence') }}</CardTitle>
           <CardAction>
-            <Badge variant="outline" class="rounded-md font-medium">已退役资产</Badge>
+            <Badge variant="outline" class="rounded-md font-medium">{{ t('machineDetail.dcBadge') }}</Badge>
           </CardAction>
         </CardHeader>
         <CardContent>
