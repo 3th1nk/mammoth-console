@@ -125,9 +125,13 @@ function openSpec() {
 // ── 取消任务 ────────────────────────────────────────────────────────────────
 const canceling = ref(false)
 // 202 后引擎异步补偿（弹介质/恢复引导序），job 状态要过一会儿才翻 canceled，
-// 期间没有 canceling 态——用本地"取消中"标记撑住 UI，查询刷到终态即解除
+// 期间没有 canceling 态——用本地"取消中"标记撑住 UI，查询刷到终态即解除。
+// 协作式取消靠子任务在 stage 边界/等待循环观察标记，可能比一次补偿慢：
+// 最多撑 30s 就放行按钮（重复提交幂等——标记只会再置 true），避免用户
+// 在引擎慢一轮时被永久禁用挡住重试
 const cancelRequested = ref(false)
 const cancelPending = computed(() => canceling.value || cancelRequested.value)
+let cancelFlagTimer: ReturnType<typeof setTimeout> | undefined
 
 async function cancelJob() {
   const ok = await confirm({
@@ -142,6 +146,8 @@ async function cancelJob() {
     await unwrap(await getClient().POST('/api/v1/jobs/{id}/cancel', { params: { path: { id: props.id } } }))
     toast.success(t('jobs.cancelSubmitted'))
     cancelRequested.value = true
+    clearTimeout(cancelFlagTimer)
+    cancelFlagTimer = setTimeout(() => (cancelRequested.value = false), 30_000)
     // 取消会连带改任务状态：scope 失效覆盖 summary/任务列表/子任务详情
     void queryClient.invalidateQueries({ queryKey: jobScopeKey(props.id) })
   } catch (e) {
@@ -155,9 +161,13 @@ async function cancelJob() {
 watch(
   () => job.value?.state,
   (s) => {
-    if (s && !isActive(s)) cancelRequested.value = false
+    if (s && !isActive(s)) {
+      cancelRequested.value = false
+      clearTimeout(cancelFlagTimer)
+    }
   },
 )
+onUnmounted(() => clearTimeout(cancelFlagTimer))
 
 function openTask(t2: components['schemas']['Task']) {
   router.push({ name: 'task-detail', params: { jobId: props.id, taskId: t2.id } })
