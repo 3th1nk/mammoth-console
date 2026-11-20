@@ -75,7 +75,7 @@ docker compose -f deploy/compose.yaml up -d --build
 MAMMOTH_UPSTREAM=http://host.docker.internal:8080 docker compose -f deploy/compose.yaml up -d --build
 ```
 
-Open `http://<host>:8081`, paste the engine's `MAMMOTH_API_TOKEN`, leave the
+Open `http://<host>`, paste the engine's `MAMMOTH_API_TOKEN`, leave the
 address empty (same-origin through the bundled Caddy reverse proxy, SSE
 pass-through included). After a contract upgrade, regenerate types first
 (`npm run gen:api`) and rebuild.

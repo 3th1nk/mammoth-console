@@ -60,7 +60,7 @@ docker compose -f deploy/compose.yaml up -d --build
 MAMMOTH_UPSTREAM=http://host.docker.internal:8080 docker compose -f deploy/compose.yaml up -d --build
 ```
 
-打开 `http://<host>:8081`，连接页粘贴引擎的 `MAMMOTH_API_TOKEN`、地址留空（同源走内置 Caddy 反代，SSE 实时透传）。契约升级后先 `npm run gen:api` 重新生成类型再构建。
+打开 `http://<host>`，连接页粘贴引擎的 `MAMMOTH_API_TOKEN`、地址留空（同源走内置 Caddy 反代，SSE 实时透传）。契约升级后先 `npm run gen:api` 重新生成类型再构建。
 
 ## 本地开发
 
