@@ -295,6 +295,7 @@ export default {
     installJob: '{type} job',
     viewSpec: 'View spec',
     cancelJob: 'Cancel job',
+    canceling: 'Canceling…',
     specTitle: 'Resolved final spec (audit)',
     specDesc: 'The actual execution spec snapshotted at submit time.',
     cancelConfirmTitle: 'Cancel job',

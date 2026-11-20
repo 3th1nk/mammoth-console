@@ -296,6 +296,7 @@ export default {
     installJob: '{type}任务',
     viewSpec: '查看 spec',
     cancelJob: '取消任务',
+    canceling: '取消中…',
     specTitle: '最终 spec（审计）',
     specDesc: '提交时快照的实际执行规格。',
     cancelConfirmTitle: '取消任务',

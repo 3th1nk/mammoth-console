@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, RefreshCcw, ScrollText } from 'lucide-vue-next'
+import { ArrowLeft, LoaderCircle, RefreshCcw, ScrollText } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
@@ -46,10 +46,16 @@ const router = useRouter()
 const queryClient = useQueryClient()
 const conn = useConnectionStore()
 
+// SSE 不可用（代理不支持/网络异常）时的保底：任务未终态期间 10s 轮询，
+// 终态即停（与 TaskDetailView 同款兜底）——取消提交后引擎异步补偿、状态
+// 翻转有延迟，轮询保证页面不至于停在"运行中"不动。
+const isActive = (s?: string) => s === 'pending' || s === 'running'
+
 const jobQuery = useQuery({
   queryKey: computed(() => jobKey(props.id)),
   queryFn: async () =>
     unwrap(await getClient().GET('/api/v1/jobs/{id}', { params: { path: { id: props.id } } })),
+  refetchInterval: (q) => (isActive((q.state.data as Job | undefined)?.state) ? 10_000 : false),
 })
 const tasksQuery = useQuery({
   queryKey: computed(() => jobTasksKey(props.id)),
@@ -59,6 +65,11 @@ const tasksQuery = useQuery({
         params: { path: { id: props.id }, query: { page_size: 200 } },
       }),
     ),
+  // 子任务列表按自身数据轮询（任一子任务未终态即轮询）
+  refetchInterval: (q) => {
+    const items = (q.state.data as { items?: components['schemas']['Task'][] } | undefined)?.items
+    return items?.some((t) => isActive(t.state)) ? 10_000 : false
+  },
 })
 
 const job = computed(() => jobQuery.data.value as Job | undefined)
@@ -113,6 +124,11 @@ function openSpec() {
 
 // ── 取消任务 ────────────────────────────────────────────────────────────────
 const canceling = ref(false)
+// 202 后引擎异步补偿（弹介质/恢复引导序），job 状态要过一会儿才翻 canceled，
+// 期间没有 canceling 态——用本地"取消中"标记撑住 UI，查询刷到终态即解除
+const cancelRequested = ref(false)
+const cancelPending = computed(() => canceling.value || cancelRequested.value)
+
 async function cancelJob() {
   const ok = await confirm({
     title: t('jobs.cancelConfirmTitle'),
@@ -125,6 +141,7 @@ async function cancelJob() {
   try {
     await unwrap(await getClient().POST('/api/v1/jobs/{id}/cancel', { params: { path: { id: props.id } } }))
     toast.success(t('jobs.cancelSubmitted'))
+    cancelRequested.value = true
     // 取消会连带改任务状态：scope 失效覆盖 summary/任务列表/子任务详情
     void queryClient.invalidateQueries({ queryKey: jobScopeKey(props.id) })
   } catch (e) {
@@ -133,6 +150,14 @@ async function cancelJob() {
     canceling.value = false
   }
 }
+
+// job 到终态（含 canceled）后清除本地"取消中"标记
+watch(
+  () => job.value?.state,
+  (s) => {
+    if (s && !isActive(s)) cancelRequested.value = false
+  },
+)
 
 function openTask(t2: components['schemas']['Task']) {
   router.push({ name: 'task-detail', params: { jobId: props.id, taskId: t2.id } })
@@ -160,10 +185,11 @@ function openTask(t2: components['schemas']['Task']) {
           variant="outline"
           size="sm"
           class="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          :disabled="canceling"
+          :disabled="cancelPending"
           @click="cancelJob"
         >
-          {{ t('jobs.cancelJob') }}
+          <LoaderCircle v-if="cancelPending" class="size-4 animate-spin" />
+          {{ cancelPending ? t('jobs.canceling') : t('jobs.cancelJob') }}
         </Button>
         <Button variant="outline" size="sm" @click="queryClient.invalidateQueries({ queryKey: jobScopeKey(id) })">
           <RefreshCcw class="size-4" /> {{ t('common.refresh') }}
