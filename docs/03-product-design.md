@@ -29,10 +29,10 @@
 
 ```
 ┌────────────────────── docker compose ──────────────────────┐
-│  caddy        :8080                                        │
+│  caddy        :80（总入口，宿主映射 80）                       │
 │   ├── /          → 静态 dist（console 构建产物）             │
-│   └── /api, /events/stream → 反代 mammoth:80（SSE 透传）     │
-│  mammoth      （现有引擎，all-in-one 或 faceted 均可）        │
+│   └── /api（含 SSE）→ 反代 mammoth:8080                      │
+│  mammoth      :8080（现有引擎，all-in-one 或 faceted 均可）  │
 │  postgres                                                  │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -50,25 +50,26 @@
 
 **目录方案**：BFF 到来时仓库根保持前端不动、新增 `server/`（Go module：模板 JSON/SQLite 存储 + 引擎透传 + 简单鉴权），最终 server embed 前端静态产物回归单二进制交付。不引入 monorepo 工具链；**纯 SPA 期不做任何目录下沉**（无收益的 churn）。
 
-## 四、技术栈（§11-D1 已定案：Vue3 + TS + Element Plus + TanStack Query + openapi-fetch）
+## 四、技术栈（§11-D1 已定案：Vue3 + TS + shadcn-vue + Tailwind CSS v4 + TanStack Query + openapi-fetch）
 
-**推荐方案 A：Vue 3 + TypeScript + Element Plus**（默认）
+**方案 A（已实施）：Vue 3 + TypeScript + shadcn-vue + Tailwind CSS v4**
+（UI 层 2026-11 从 Element Plus 整体迁移至 shadcn-vue——原选型理由"组件覆盖最全"在密集型控制台里反成约束：表格/表单样式定制成本高、暗色主题与设计令牌脱节、包体偏重；迁移后组件源码进仓库，样式完全可控。README 截图与技术栈说明已同步。）
 
 | 层 | 选型 | 理由 |
 |---|---|---|
 | 框架 | Vue 3.5+ / `<script setup>` / TypeScript | 国内运维工具生态主流；单文件组件对"表格+表单+抽屉"密集型控制台效率高 |
 | 构建 | Vite | 事实标准 |
-| UI | Element Plus | 表格/表单/树/级联密度高，运维后台组件覆盖最全；暗色模式内置 |
+| UI | shadcn-vue（reka-ui）+ Tailwind CSS v4 | 无头组件 + copy-paste 模式：组件源码进仓库，无上游版本绑架；Tailwind 设计令牌驱动暗色模式；表格/表单/抽屉/命令面板（cmdk-vue）按需组合 |
 | 服务端状态 | TanStack Query（vue-query） | 列表缓存、cursor 分页、轮询（logs tail）、失效重取与 SSE 事件联动 |
 | 全局状态 | Pinia（轻用） | 只放连接配置、capabilities、busy 缓存等少量全局态 |
-| SSE | @microsoft/fetch-event-source | 原生 EventSource 不能带 Bearer header；该库支持 header + Last-Event-ID 自动重连 |
+| SSE | 自研轻量客户端（fetch + ReadableStream，`src/api/sse.ts`） | 原生 EventSource 不能带 Bearer header；fetch 流式解析 text/event-stream，3s 自动重连 + Last-Event-ID 续传，零依赖（原选型 @microsoft/fetch-event-source 迁移时以自研替代） |
 | 类型与 API | openapi-typescript + openapi-fetch | 契约已冻结（v1.0=当前 openapi.yaml），类型直出，零手写 client |
-| 校验 | zod（复用 openapi-typescript 生成类型做 spec 表单校验） | 方言差异矩阵的前端预校验 |
+| 校验 | 手写校验（结合 openapi-typescript 生成类型的 required/default 语义） | spec 表单按契约元数据显式校验；表单规模可控，未引入 zod（原规划项，随迁移裁撤） |
 | 图表 | ECharts | 总览分布图 |
 | i18n | vue-i18n | zh-CN 为主语言，预留 en |
-| 测试 | Vitest + Playwright | 组件单测 + 关键流程 E2E |
+| 测试 | Playwright | 关键流程 E2E（`e2e/`：连接/onboarding/机器）；组件单测未引入 Vitest（原规划项，按需再评估） |
 
-**备选方案 B：React 18 + Ant Design 5**——品类先例更多（MAAS maas-ui、OpenShift console、Foreman 插件全 React 系），TanStack Query 原生支持更成熟；其余同构。两者都满足"保守而轻"原则（竞品教训：避免 Redux 式重状态管理 + Enzyme 式快照测试依赖）。
+**备选方案 B（历史记录，未采用）：React 18 + Ant Design 5**——品类先例更多（MAAS maas-ui、OpenShift console、Foreman 插件全 React 系），TanStack Query 原生支持更成熟；其余同构。两者都满足"保守而轻"原则（竞品教训：避免 Redux 式重状态管理 + Enzyme 式快照测试依赖）。
 
 ## 五、信息架构
 
@@ -176,7 +177,7 @@ flowchart LR
 ```
 
 - **Step2 表单分区**（对应 InstallSpec）：镜像（**二选一：从镜像库选择 `image.id`（引擎 sha256 门禁兜底）/ 内联 source+checksum**；distro 下拉由 capabilities `distros[]` 驱动并标注 family/keep_partition_support/pxe_support）→ 存储（三档语义单选：整盘擦除 / 保留盘跳过指定盘 / 保留分区+preserved 标注；盘选择器用 layout 快照可视化；带内不可达时禁用 keep:partitions 并解释）→ 网络（DHCP 默认 / 静态；debian 选中时禁用 bond/vlan 并给方言提示）→ 身份（hostname/时区）→ 访问（root 密码：留空=按任务随机，显著提示"将经一次性事件下发，请留意弹窗"）→ 脚本（pre/post，windows 通路限制即时提示）→ 软件源（`package_source.repos[]` 列表编辑器：name/url/gpg_key_url/suite/components；suite 缺省按发行版代号自动提示；windows 方言选中时整区禁用并提示"渲染即拒"）→ 启动（virtual_media/pxe，默认取 capabilities `boot_strategy_default`；windows 自动标 UEFI-only 并对 `pxe_firmware=BIOS` 观测的机器前置报 `SCHEMA_FIRMWARE_MISMATCH` 警告）。
-- **表单 ↔ YAML 双视图**（Assisted Installer 验证过的妥协方案）：右上角切换，双向同步（表单为源，YAML 可编辑回写，zod 校验）。
+- **表单 ↔ YAML 双视图**（Assisted Installer 验证过的妥协方案）：右上角切换，双向同步（表单为源，YAML 可编辑回写，手写校验）。
 - **方言即时预校验**：distro 选择后按文档 04 §5.3 矩阵在前端禁用不兼容项（debian 无 bond/vlan、windows 无 RAID/必须 UEFI、agent 通路无 pre_install）——把 `RENDER_FAILED` 从提交后错误提前到配置时提示。
 - **Step3 试算页**：调 `install-plan`，逐盘卡片展示 `device / matched_by（为什么选中这块盘）/ serial / size / keep / planned_partitions`，boot_drive 高亮，warnings 逐条呈现（可解释性是该页的灵魂）；单机提交失败（422）就地显示同源错误文案。
 - **Step4 policy**：并发（默认 10）、on_task_failure（continue/abort_batch）、task_timeout、verify_layout 开关（默认开，附解释）、**health_gate 三档**（off 缺省 / report"坏盘进试算警告" / block"坏盘拦在擦盘前，422点名 serial"；附探针健康数据来源说明）。
@@ -230,7 +231,7 @@ flowchart LR
 
 | # | 决策 | 默认建议 | 影响 |
 |---|---|---|---|
-| D1 | 技术栈 Vue3+Element Plus vs React+AntD | 方案 A（Vue） | 全部代码 |
+| D1 | 技术栈 Vue3+Element Plus vs React+AntD | **已定案并实施**：方案 A（Vue）；UI 层 2026-11 迁移至 shadcn-vue + Tailwind CSS v4（§四） | 全部代码 |
 | D2 | 机器可读名称：约定 label（如 `name`）vs 反馈引擎加 display_name | v1 约定 label `name`，列表缺省回退 `bmc_address` | 列表/详情呈现、搜索体验 |
 | D3 | 安装方案模板存储：v1 localStorage+导入导出 vs 直接上 BFF | v1 本地 | M3 范围 |
 | D4 | root 密码是否持久化 | 不持久化（安全优先），仅会话内 | 观测体验 |
@@ -247,4 +248,4 @@ flowchart LR
 1. **引擎 API 的前端缺口**（搜索/批量/logs SSE）在 v1 只能绕行——绕行方案的体验上限就是 UI 的上限，需尽快推动 D6。
 2. **单 token 无审计主体**：console 不做二次鉴权，若部署方直接暴露端口，任何人持 token 即全权——文档必须写清部署边界（建议 compose 默认只绑内网/加 Caddy basic auth 示例）。
 3. **契约演进**：虽冻结，`windows_agent_installer` 等能力仍在活跃变更——SDK 生成 + capabilities 驱动开关可把影响压到重生成级别。
-4. **SSE 基础设施**：浏览器直连要求反代正确透传（Caddy `flush_interval -1`）；`fetch-event-source` 的 Last-Event-ID 行为需要 E2E 覆盖。
+4. **SSE 基础设施**：浏览器直连要求反代正确透传（Caddy `flush_interval -1`）；自研 SSE 客户端（`src/api/sse.ts`）的 Last-Event-ID 行为需要 E2E 覆盖。
