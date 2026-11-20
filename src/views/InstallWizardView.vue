@@ -114,7 +114,10 @@ const evidenceWait = computed({
 })
 
 const spec = reactive<InstallSpec>({
-  image: { distro: '', format: 'raw.gz' },
+  // format 是 dd 通路专用字段(契约:其他发行版拒绝该字段)——表单态不携带,
+  // 提交时由 buildSpec 按 imageFormat 写入;required 是生成器把带 default
+  // 的字段标必填的已知坑(docs/03 §199),断言绕过而非硬造默认值。
+  image: { distro: '' } as InstallSpec['image'],
   // evidence_wait_seconds:0 = 引擎缺省(10m 等待窗)——生成器把带 default 的
   // 字段标成必填(openapi-typescript 已知坑,docs/03 §199),显式给缺省值。
   boot: { strategy: bootDefault.value, installer: 'auto', evidence_wait_seconds: 0 },
@@ -591,7 +594,9 @@ function removeRepo(idx: number) {
 // 试算（install-plan）不做 image.id 解析：库镜像在试算时用注册件的
 // source_url + digest 代替，提交仍用 id（引擎提交时才解析为缓存文件）。
 function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
-  const image: InstallSpec['image'] = { distro: spec.image.distro, format: spec.image.format ?? 'raw.gz' }
+  // format 不默认携带:契约语义是 dd 通路专用、其他发行版拒绝该字段,
+  // 由下方 dd 分支按 imageFormat 写入(表单态已不存 format)
+  const image = { distro: spec.image.distro } as InstallSpec['image']
   if (imageMode.value === 'library' && chosenImageId.value) {
     if (opts.forPlan) {
       const reg = readyImages.value.find((i) => i.id === chosenImageId.value)
@@ -612,10 +617,11 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
     if (spec.image.checksum) image.checksum = spec.image.checksum
   }
   if (isDD.value) {
-    // dd(docs/09):format 是通路字段(生成器把带 default 的字段标为必填,
-    // 而契约本无 required——固定携带);checksum 是通路硬前置,但仅内联
-    // 模式由表单携带——库镜像模式交给引擎解析(注册件识别出的未压缩摘要)
-    ;(image as InstallSpec['image']).format = imageFormat.value
+    // dd(docs/09):format 是通路字段——压缩格式是机器侧运行时选解压器
+    // 的依据,随注册件/地址扩展名预置(imageFormat);checksum 是通路硬前置,
+    // 但仅内联模式由表单携带——库镜像模式交给引擎解析(注册件识别出的
+    // 未压缩摘要)
+    image.format = imageFormat.value
     if (imageMode.value === 'inline' && spec.image.checksum) image.checksum = spec.image.checksum
   }
   const out: InstallSpec = { image }
@@ -766,22 +772,27 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
     if (ifaces.length > 0) out.network = ifaces
   }
 
-  // 脚本（明文 → base64）
+  // 脚本（明文 → base64）。dd 无方言渲染，脚本段不序列化（UI 已隐藏——
+  // 防切发行版后的表单残留漏出）；shell 是 windows 方言解释器，linux 恒
+  // 为 sh（契约：ignored），仅 windows 携带。
   const scriptSpecs = scripts.value
     .filter((sc) => sc.content.trim())
-.map((sc) => ({
-      stage: sc.stage,
-      shell: sc.shell,
-      content_base64: utf8ToB64(sc.content),
-    }))
-  if (scriptSpecs.length > 0) out.scripts = scriptSpecs
+    .map((sc) =>
+      ({
+        stage: sc.stage,
+        ...(isWindows.value ? { shell: sc.shell } : {}),
+        content_base64: utf8ToB64(sc.content),
+      }) as components['schemas']['ScriptSpec'],
+    )
+  if (!isDD.value && scriptSpecs.length > 0) out.scripts = scriptSpecs
 
   if (isBatchStatic.value && batchHostnameUsed.value) {
     out.identity = { hostname_pattern: '{var:hostname}' } // 逐台显式名（矩阵主机名列）
   } else if (hostnamePattern.value.trim()) {
     out.identity = { hostname_pattern: hostnamePattern.value.trim() }
   }
-  const keys = sshKeys.value.map((k) => k.trim()).filter(Boolean)
+  // ssh_keys 是 linux 方言段（windows UI 已隐藏——防切发行版后的残留漏出）
+  const keys = !isWindows.value ? sshKeys.value.map((k) => k.trim()).filter(Boolean) : []
   const wantPassword = rootMode.value === 'manual' && rootPassword.value
   if (wantPassword || keys.length > 0 || (isWindows.value && winCaps.value.length > 0)) {
     out.access = {
@@ -793,7 +804,9 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
         : {}),
     }
   }
-  const validRepos = repos.value.filter((r) => r.name && r.url)
+  // 软件源:windows 渲染期拒绝该块、dd 无方言渲染——两通路不序列化
+  // (UI 已隐藏,防切发行版后的表单残留漏出)
+  const validRepos = !isWindows.value && !isDD.value ? repos.value.filter((r) => r.name && r.url) : []
   if (validRepos.length > 0) {
     out.package_source = {
       repos: validRepos.map((r) => ({
@@ -815,11 +828,15 @@ function buildSpec(opts: { forPlan?: boolean } = {}): InstallSpec {
     if (spec.boot?.kernel_args) kernelArgsOut.kernel_args = spec.boot.kernel_args
     if (spec.boot?.installed_kernel_args) kernelArgsOut.installed_kernel_args = spec.boot.installed_kernel_args
   }
-  out.boot = (
-    isWindows.value
-      ? { strategy: spec.boot?.strategy ?? 'virtual_media', installer: spec.boot?.installer ?? 'auto' }
-      : { strategy: spec.boot?.strategy ?? 'virtual_media', ...kernelArgsOut }
-  ) as InstallSpec['boot']
+  // 引导证据等待窗(headless PXE,docs/13 §4):0 = 引擎缺省(600s)——省略;
+  // 非 0 显式携带(BMC 承载的策略忽略该字段,带上无害)
+  const bootPlain: Record<string, unknown> = isWindows.value
+    ? { strategy: spec.boot?.strategy ?? 'virtual_media', installer: spec.boot?.installer ?? 'auto' }
+    : { strategy: spec.boot?.strategy ?? 'virtual_media', ...kernelArgsOut }
+  if ((spec.boot?.evidence_wait_seconds ?? 0) > 0) {
+    bootPlain.evidence_wait_seconds = spec.boot!.evidence_wait_seconds
+  }
+  out.boot = bootPlain as InstallSpec['boot']
   return out
 }
 
