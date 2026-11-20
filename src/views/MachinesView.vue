@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/table'
 import EmptyState from '@/components/EmptyState.vue'
 import Pager from '@/components/Pager.vue'
+import ClearableInput from '@/components/ClearableInput.vue'
 import { formatBytes, formatTime } from '@/utils/format'
 
 type Machine = components['schemas']['Machine']
@@ -279,11 +280,12 @@ function onActionSubmitted() {
               <SelectItem value="error">{{ t('states.machineError') }}</SelectItem>
             </SelectContent>
           </Select>
-          <Input
+          <ClearableInput
             v-model="qInput"
             :placeholder="t('machines.searchPlaceholder')"
             class="w-[320px]"
             @keyup.enter="applySearch"
+            @clear="applySearch"
           />
           <Input
             v-model="labelInput"
@@ -400,7 +402,7 @@ function onActionSubmitted() {
         <div class="flex items-center justify-between">
           <button
             v-if="selected.length > 0"
-            class="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            class="mt-3 shrink-0 whitespace-nowrap text-xs text-muted-foreground underline-offset-2 hover:underline"
             @click="clearSelection"
           >
             {{ t('machines.clearSelection', { n: selected.length }) }}

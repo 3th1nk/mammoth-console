@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/table'
 import EmptyState from '@/components/EmptyState.vue'
 import Pager from '@/components/Pager.vue'
+import ClearableInput from '@/components/ClearableInput.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 import { formatTime } from '@/utils/format'
 
@@ -109,6 +110,7 @@ const typeSearch = ref('')
 
 function setType(v: string) {
   typeFilter.value = v
+  typeSearch.value = ''
   typeOpen.value = false
   resetPaging()
 }
@@ -239,11 +241,12 @@ function copySecret() {
                   <SelectItem v-for="rt in RESOURCE_TYPES" :key="rt" :value="rt">{{ resourceTypeLabel(rt) }}</SelectItem>
                 </SelectContent>
               </Select>
-              <Input
+              <ClearableInput
                 v-model="ridInput"
                 :placeholder="t('events.ridPlaceholder')"
                 class="w-[240px] font-mono"
                 @keyup.enter="ridFilter = ridInput; resetPaging()"
+                @clear="ridFilter = ridInput; resetPaging()"
               />
               <Popover v-model:open="typeOpen">
                 <PopoverTrigger as-child>
@@ -267,6 +270,12 @@ function copySecret() {
                           <Plus class="size-3.5" /> {{ t('events.typeUseFilter', { v: typeSearch.trim() }) }}
                         </button>
                       </CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem :value="`${t('events.typeAll')} all`" @select="setType('')">
+                          <Check class="size-4" :class="!typeFilter ? 'opacity-100' : 'opacity-0'" />
+                          <span>{{ t('events.typeAll') }}</span>
+                        </CommandItem>
+                      </CommandGroup>
                       <CommandGroup v-for="g in EVENT_TYPE_GROUPS" :key="g.label" :heading="g.label">
                         <CommandItem
                           v-for="x in g.types"

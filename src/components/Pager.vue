@@ -16,7 +16,7 @@ defineEmits<{ prev: []; next: [] }>()
 </script>
 
 <template>
-  <div class="flex items-center justify-between pt-3">
+  <div class="flex w-full items-center justify-between pt-3">
     <span class="text-[13px] text-muted-foreground">{{ hint || t('common.pagerHint') }}</span>
     <div class="flex gap-2">
       <Button variant="outline" size="sm" :disabled="!hasPrev" @click="$emit('prev')">

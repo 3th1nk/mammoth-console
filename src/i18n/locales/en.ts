@@ -8,7 +8,7 @@ export default {
     deleted: 'Deleted',
     create: 'Create',
     search: 'Search',
-    apply: 'Apply',
+    clear: 'Clear',
     submit: 'Submit',
     close: 'Close',
     copy: 'Copy',

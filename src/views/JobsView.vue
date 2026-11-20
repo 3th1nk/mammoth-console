@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { RefreshCcw, Search } from 'lucide-vue-next'
+import { RefreshCcw } from 'lucide-vue-next'
 import { useQuery } from '@tanstack/vue-query'
 import { useI18n } from 'vue-i18n'
 import { getClient } from '@/api/client'
@@ -155,7 +155,6 @@ const JOB_TYPE_LABEL = computed<Record<string, string>>(() => ({
               <SelectItem v-for="o in STATE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" @click="resetPaging"><Search class="size-4" /> {{ t('common.apply') }}</Button>
         </div>
 
         <Skeleton v-if="query.isPending.value" class="h-56 w-full" />

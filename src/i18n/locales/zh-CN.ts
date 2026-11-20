@@ -9,7 +9,7 @@ export default {
     deleted: '已删除',
     create: '创建',
     search: '搜索',
-    apply: '应用',
+    clear: '清除',
     submit: '提交',
     close: '关闭',
     copy: '复制',
