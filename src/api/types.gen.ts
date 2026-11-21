@@ -427,6 +427,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/machines/{id}/raid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live logical-drive table of the controller with the free drive pool
+         * @description Reads the controller's RAID topology synchronously — the volumes it
+         *     reports (with member serials) plus the physical drives no volume
+         *     spans (docs/07-bmc.md §6.7). The create dialog's member candidates
+         *     are free_drives; volumes[].member_serials is the occupied set.
+         *     Same out-of-band path the actions use; a controller without a
+         *     Volumes collection answers BMC_UNSUPPORTED.
+         */
+        get: operations["getMachineRaid"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/machines/{id}/acceptance": {
         parameters: {
             query?: never;
@@ -1572,6 +1597,34 @@ export interface components {
             medium?: string;
             protocol?: string;
         };
+        RaidVolumeEntry: {
+            /**
+             * @description The controller-assigned volume identity (Huawei iBMC renames to
+             *     LogicalDriveN regardless of the requested label) — the key
+             *     delete_raid_volume consumes.
+             */
+            name: string;
+            /** @description The vendor's own spelling (RAID0 | RAID1 | RAID5 | RAID10). */
+            raid_level?: string;
+            /** Format: int64 */
+            size_bytes?: number;
+            /**
+             * @description Member physical drive serials (the same identity
+             *     GET /machines/{id}/drives reports). Empty when the controller
+             *     does not expose membership.
+             */
+            member_serials?: string[];
+        };
+        RaidView: {
+            /** @description The logical drives the controller reports. */
+            volumes: components["schemas"]["RaidVolumeEntry"][];
+            /**
+             * @description Physical drives no reported volume spans — the member
+             *     candidates for create_raid_volume. Drives whose membership the
+             *     controller fails to report are assumed free.
+             */
+            free_drives: components["schemas"]["DriveEntry"][];
+        };
         /** @description Wrapper — the machine's latest decommission report (null when none). */
         DecommissionView: {
             /** @description The retirement record: machine identity, the erase record (serials + mechanisms), firmware inventory / SEL tail / BIOS snapshot (each null-shaped when the controller lacked the capability). */
@@ -1720,6 +1773,56 @@ export interface components {
             confirm: boolean;
         };
         /**
+         * @description Create one logical drive on the controller's RAID volume collection
+         *     (docs/07-bmc.md §6.7) — the machine-face lifecycle op: volumes are
+         *     created once and every later install just targets them. DESTRUCTIVE:
+         *     member drives are consumed (implicitly wiped). Requires the explicit
+         *     confirm flag. Member serials are re-read against the live drive
+         *     table at execution — a serial not on it rejects the whole request.
+         *     The returned job event records the controller-assigned volume name
+         *     (vendors rename: Huawei assigns LogicalDriveN); the requested name
+         *     is a label only. Creation is idempotent — a volume already spanning
+         *     exactly the requested serials at the same level is reused.
+         */
+        ActionCreateRaidVolume: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "create_raid_volume";
+            /** @description Requested volume label; the controller may rename it. */
+            name?: string;
+            /**
+             * @description RAID level. Member-count rules: 0→2+, 1→2..4, 5→3+, 10→4+ and even.
+             * @enum {string}
+             */
+            level: "0" | "1" | "5" | "10";
+            /** @description Member physical drive serials per the controller's live table (GET /machines/{id}/drives). */
+            serials: string[];
+            /** @description Explicit destructive confirmation — always required. */
+            confirm: boolean;
+        };
+        /**
+         * @description Remove one logical drive from the controller (docs/07-bmc.md §6.7) —
+         *     the reconfiguration half of machine-face RAID management; the freed
+         *     member drives return to the create pool. DESTRUCTIVE: everything
+         *     the volume held is gone. Requires the explicit confirm flag. The
+         *     name is the controller-assigned identity GET /machines/{id}/raid
+         *     reports — on vendors that rename volumes the requested label is not
+         *     the key.
+         */
+        ActionDeleteRaidVolume: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "delete_raid_volume";
+            /** @description Volume name per GET /machines/{id}/raid (controller-assigned). */
+            name: string;
+            /** @description Explicit destructive confirmation — always required. */
+            confirm: boolean;
+        };
+        /**
          * @description Write pending BIOS attribute values (docs/07-bmc.md §6). HIGH-RISK:
          *     the two-stage contract requires the explicit confirm flag unless the
          *     deployment sets MAMMOTH_BIOS_CONFIRM=optional; the runner re-reads
@@ -1777,7 +1880,7 @@ export interface components {
              */
             ssh_keys?: string[];
         };
-        ActionRequest: components["schemas"]["ActionDiscover"] | components["schemas"]["ActionPowerOn"] | components["schemas"]["ActionPowerOff"] | components["schemas"]["ActionSoftOff"] | components["schemas"]["ActionReboot"] | components["schemas"]["ActionHardReboot"] | components["schemas"]["ActionCycle"] | components["schemas"]["ActionSetBootDevice"] | components["schemas"]["ActionMountMedia"] | components["schemas"]["ActionEjectMedia"] | components["schemas"]["ActionSetBiosAttributes"] | components["schemas"]["ActionEraseDrives"] | components["schemas"]["ActionBootRescue"];
+        ActionRequest: components["schemas"]["ActionDiscover"] | components["schemas"]["ActionPowerOn"] | components["schemas"]["ActionPowerOff"] | components["schemas"]["ActionSoftOff"] | components["schemas"]["ActionReboot"] | components["schemas"]["ActionHardReboot"] | components["schemas"]["ActionCycle"] | components["schemas"]["ActionSetBootDevice"] | components["schemas"]["ActionMountMedia"] | components["schemas"]["ActionEjectMedia"] | components["schemas"]["ActionSetBiosAttributes"] | components["schemas"]["ActionEraseDrives"] | components["schemas"]["ActionCreateRaidVolume"] | components["schemas"]["ActionDeleteRaidVolume"] | components["schemas"]["ActionBootRescue"];
         /**
          * @description Trigger (re)discovery (docs/05-inventory.md §2). probe=auto is the
          *     registration default: out-of-band reads plus an optional in-band SSH
@@ -3310,6 +3413,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DrivesView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+            /** @description BMC error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getMachineRaid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["machineId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current RAID topology. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RaidView"];
                 };
             };
             404: components["responses"]["NotFound"];

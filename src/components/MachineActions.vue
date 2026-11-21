@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import EraseDrivesDialog from './EraseDrivesDialog.vue'
+import RaidVolumeDialog from './RaidVolumeDialog.vue'
 import BiosDialog from './BiosDialog.vue'
 import RescueDialog from './RescueDialog.vue'
 import { getClient } from '@/api/client'
@@ -63,6 +64,7 @@ const mediaDialog = ref(false)
 const mediaUrl = ref('')
 const ejectAfter = ref(false)
 const eraseDialog = ref(false)
+const raidDialog = ref(false)
 const biosDialog = ref(false)
 const rescueDialog = ref(false)
 const decommissionBusy = ref(false)
@@ -126,6 +128,10 @@ function onCommand(cmd: string) {
   }
   if (cmd === 'erase') {
     eraseDialog.value = true
+    return
+  }
+  if (cmd === 'raid') {
+    raidDialog.value = true
     return
   }
   if (cmd === 'bios') {
@@ -291,6 +297,7 @@ function submitMedia() {
             <DropdownMenuSeparator />
             <DropdownMenuItem @click="onCommand('bios')">{{ t('actions.biosAttrs') }}</DropdownMenuItem>
             <DropdownMenuItem @click="onCommand('erase')">{{ t('actions.erase') }}</DropdownMenuItem>
+            <DropdownMenuItem :disabled="bmc?.protocol === 'ipmi'" @click="onCommand('raid')">{{ t('actions.storageRaid') }}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem @click="onCommand('decommission')">{{ t('actions.decommission') }}</DropdownMenuItem>
           </template>
@@ -331,6 +338,7 @@ function submitMedia() {
           <DropdownMenuSeparator />
           <DropdownMenuItem @click="onCommand('bios')">{{ t('actions.biosAttrs') }}</DropdownMenuItem>
           <DropdownMenuItem @click="onCommand('erase')">{{ t('actions.erase') }}</DropdownMenuItem>
+          <DropdownMenuItem :disabled="bmc?.protocol === 'ipmi'" @click="onCommand('raid')">{{ t('actions.storageRaid') }}</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem @click="onCommand('decommission')">{{ t('actions.decommission') }}</DropdownMenuItem>
         </template>
@@ -378,6 +386,7 @@ function submitMedia() {
     </Dialog>
 
     <EraseDrivesDialog v-model="eraseDialog" :machine-id="machineId" />
+    <RaidVolumeDialog v-model="raidDialog" :machine-id="machineId" />
     <BiosDialog v-model="biosDialog" :machine-id="machineId" />
     <RescueDialog v-model="rescueDialog" :machine-id="machineId" />
 
