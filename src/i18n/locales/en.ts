@@ -216,6 +216,7 @@ export default {
     overall: 'Overall (worst-of)',
     sensorsEmpty: 'No sensors reported by the controller',
     reading: 'Reading…',
+    liveReadHint: 'Live read not loaded — press Re-read to query the BMC (it shares the iBMC session budget with install/ops windows; no auto-poll on open)',
     sel: 'SEL hardware log (latest 500)',
     colLevel: 'Level',
     colTime: 'Time',

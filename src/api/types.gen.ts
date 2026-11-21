@@ -4324,8 +4324,8 @@ export interface operations {
     listEvents: {
         parameters: {
             query?: {
-                /** @description `pending` covers zero-registration sightings; `webhook` webhook lifecycle; `image` artifact-library fetch outcomes. */
-                resource_type?: "job" | "task" | "machine" | "credential" | "pending" | "webhook" | "image";
+                /** @description `pending` covers zero-registration sightings; `webhook` webhook lifecycle; `image` artifact-library fetch outcomes; `netboot` service-level diagnostics (the startup DHCP probe). */
+                resource_type?: "job" | "task" | "machine" | "credential" | "pending" | "webhook" | "image" | "netboot";
                 resource_id?: string;
                 /** @description Exact event type filter (e.g. machine.discovered). */
                 type?: string;

@@ -82,11 +82,20 @@ const diskHealthBySerial = computed(() => {
 // 强制中止（engine 自身预算 30s，正常会先返回 BMC_UNREACHABLE；超时兜底
 // 针对旧引擎/代理卡死），retry 关掉让错误立即可见而不是静默翻倍等待。
 const LIVE_READ_TIMEOUT_MS = 60_000
+// BMC 活读改为手动触发:活读是引擎同步走 BMC 的多请求遍历,与装机 boot
+// 窗口共享 iBMC 的会话预算——打开详情页就自动轮询会在关键窗口挤占会话
+// (2026-11-21 实录:KVM + 详情页与装机 boot 并发,boot 阶段 412/SEL 超时)。
+// 卡片打开呈提示态,点「重新读取」才发起。
+const liveReadArmed = ref(false)
+async function armLiveRead(q: { refetch: () => Promise<unknown> }) {
+  liveReadArmed.value = true
+  await q.refetch()
+}
 const healthQuery = useQuery({
   queryKey: computed(() => machineHealthKey(props.id)),
   retry: 0,
   // headless 无 BMC 活读面,引擎门即 422——不发请求
-  enabled: computed(() => !headless.value),
+  enabled: computed(() => liveReadArmed.value && !headless.value),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/machines/{id}/health', {
@@ -98,7 +107,7 @@ const healthQuery = useQuery({
 const selQuery = useQuery({
   queryKey: computed(() => machineSelKey(props.id)),
   retry: 0,
-  enabled: computed(() => !headless.value),
+  enabled: computed(() => liveReadArmed.value && !headless.value),
   queryFn: async () =>
     unwrap(
       await getClient().GET('/api/v1/machines/{id}/sel', {
@@ -426,7 +435,7 @@ const title = computed(() => {
         <CardHeader>
           <CardTitle class="text-base">{{ t('machineDetail.health') }}</CardTitle>
           <CardAction>
-            <Button variant="outline" size="sm" :disabled="healthQuery.isFetching.value" @click="healthQuery.refetch()">
+            <Button variant="outline" size="sm" :disabled="healthQuery.isFetching.value" @click="armLiveRead(healthQuery)">
               <RefreshCcw class="size-4" /> {{ t('machineDetail.reread') }}
             </Button>
           </CardAction>
@@ -480,7 +489,7 @@ const title = computed(() => {
         <CardHeader>
           <CardTitle class="text-base">{{ t('machineDetail.sel') }}</CardTitle>
           <CardAction>
-            <Button variant="outline" size="sm" :disabled="selQuery.isFetching.value" @click="selQuery.refetch()">
+            <Button variant="outline" size="sm" :disabled="selQuery.isFetching.value" @click="armLiveRead(selQuery)">
               <RefreshCcw class="size-4" /> {{ t('machineDetail.reread') }}
             </Button>
           </CardAction>
@@ -512,7 +521,9 @@ const title = computed(() => {
             </Table>
             <EmptyState v-if="(selQuery.data.value.entries ?? []).length === 0" :description="t('machineDetail.selEmpty')" />
           </div>
-          <p v-else class="text-sm text-muted-foreground">{{ t('machineDetail.reading') }}</p>
+          <p v-else class="text-sm text-muted-foreground">
+            {{ t('machineDetail.liveReadHint') }}
+          </p>
         </CardContent>
       </Card>
 

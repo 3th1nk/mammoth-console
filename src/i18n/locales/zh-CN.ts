@@ -217,6 +217,8 @@ export default {
     overall: '整体结论（worst-of）',
     sensorsEmpty: '控制器未上报传感器',
     reading: '正在读取…',
+    // BMC 活读改为手动触发后的卡片初始态
+    liveReadHint: '未加载实时读数——点「重新读取」向 BMC 发起(与装机/运维窗口共享 iBMC 会话预算,避免自动轮询挤占)',
     sel: 'SEL 硬件日志（最近 500 条）',
     colLevel: '级别',
     colTime: '时间',
