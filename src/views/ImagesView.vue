@@ -59,6 +59,14 @@ function imageBadge(state: string) {
   return { label: t(s.labelKey), style: toneBadgeStyle(s.tone) }
 }
 
+// 发行版列只拼 dd 直写通路有信息量的压缩格式（raw.gz/raw.xz）。引擎嗅探器
+// 对非 gzip/xz 一律恒等落 raw（含 ISO 9660，引擎 compress.go），对 ISO 无
+// 信息量，拼进发行版列只是噪音（250 环境全库出现 raw 尾缀的根因）。
+function distroText(row: Image): string {
+  const format = row.format && row.format !== 'raw' ? row.format : ''
+  return [row.distro, row.version, format].filter(Boolean).join(' ')
+}
+
 // ── 注册对话框 ──────────────────────────────────────────────────────────────
 const regVisible = ref(false)
 const reg = ref({ name: '', source_url: '', sha256: '', distro: '', version: '' })
@@ -166,8 +174,8 @@ async function remove(img: Image) {
                 </TableCell>
                 <TableCell class="font-medium">{{ row.name || '—' }}</TableCell>
                 <TableCell>
-                  <span v-if="row.distro || row.version || row.format" class="font-mono text-xs">
-                    {{ [row.distro, row.version, row.format].filter(Boolean).join(' ') }}
+                  <span v-if="distroText(row)" class="font-mono text-xs">
+                    {{ distroText(row) }}
                   </span>
                   <span v-else-if="row.state === 'fetching'" class="text-muted-foreground" :title="t('images.identifyingTip')">
                     {{ t('images.identifying') }}
