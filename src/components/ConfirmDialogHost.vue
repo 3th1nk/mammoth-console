@@ -47,9 +47,11 @@ function onOpenChange(v: boolean) {
 <template>
   <AlertDialog :open="open" @update:open="onOpenChange">
     <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>{{ opts?.title }}</AlertDialogTitle>
-        <AlertDialogDescription v-if="opts?.description">
+      <!-- anywhere 而非 break-word:同时修正 grid 子项 min-content 尺寸,
+           SHA/URL 等无空格长串才会在容器内换行而非撑破对话框 -->
+      <AlertDialogHeader class="min-w-0">
+        <AlertDialogTitle class="[overflow-wrap:anywhere]">{{ opts?.title }}</AlertDialogTitle>
+        <AlertDialogDescription v-if="opts?.description" class="[overflow-wrap:anywhere]">
           {{ opts.description }}
         </AlertDialogDescription>
       </AlertDialogHeader>
