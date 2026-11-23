@@ -172,7 +172,11 @@ async function remove(img: Image) {
                     {{ imageBadge(row.state).label }}
                   </Badge>
                 </TableCell>
-                <TableCell class="font-medium">{{ row.name || '—' }}</TableCell>
+                <TableCell>
+                  <span class="block max-w-[200px] truncate font-medium" :title="row.name || undefined">
+                    {{ row.name || '—' }}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <span v-if="distroText(row)" class="font-mono text-xs">
                     {{ distroText(row) }}
@@ -188,7 +192,9 @@ async function remove(img: Image) {
                     class="text-muted-foreground"
                     :title="t('images.dirImportedTip', { path: row.source_url.slice('dir://'.length) })"
                   >{{ t('images.dirImported') }}</span>
-                  <span v-else class="break-all font-mono text-xs">{{ row.source_url }}</span>
+                  <span v-else class="block max-w-[280px] truncate font-mono text-xs" :title="row.source_url">
+                    {{ row.source_url }}
+                  </span>
                 </TableCell>
                 <TableCell>
                   <span class="block max-w-[200px] truncate font-mono text-[11px] text-muted-foreground" :title="row.sha256">
