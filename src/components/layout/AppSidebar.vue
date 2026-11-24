@@ -89,9 +89,12 @@ const GROUPS: { labelKey: string; items: NavItem[] }[] = [
                   <span>{{ t(item.titleKey) }}</span>
                 </RouterLink>
               </SidebarMenuButton>
+              <!-- 实底徽章文字色必须自持:基类 peer-data-[active]/peer-hover 会把
+                   文字强制成 sidebar-accent-foreground(=accent-foreground,与
+                   bg-primary 同为深色),选中/悬停行时数字隐形——! 压过 peer 规则 -->
               <SidebarMenuBadge
                 v-if="item.name === 'pending' && props.pendingCount > 0"
-                class="rounded-full bg-primary px-1.5 font-medium text-primary-foreground"
+                class="rounded-full bg-primary px-1.5 font-medium text-primary-foreground!"
               >
                 {{ props.pendingCount > 99 ? '99+' : props.pendingCount }}
               </SidebarMenuBadge>
