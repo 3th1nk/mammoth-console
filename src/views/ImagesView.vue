@@ -162,7 +162,8 @@ async function remove(img: Image) {
                 <TableHead class="min-w-[180px]">{{ t('images.colSha') }}</TableHead>
                 <TableHead class="w-24">{{ t('images.colSize') }}</TableHead>
                 <TableHead class="w-44">{{ t('images.colCreatedAt') }}</TableHead>
-                <TableHead class="w-20">{{ t('machines.colActions') }}</TableHead>
+                <!-- pl 补偿按钮内边距(px-2.5):标题左缘对齐删除图标而非按钮边框 -->
+                <TableHead class="w-20 pl-[18px]">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

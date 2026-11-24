@@ -115,7 +115,8 @@ function onRegistered(machine: Machine) {
                 <TableHead class="min-w-[120px]">{{ t('pending.colReport') }}</TableHead>
                 <TableHead class="w-44">{{ t('pending.colFirstSeen') }}</TableHead>
                 <TableHead class="w-44">{{ t('pending.colLastSeen') }}</TableHead>
-                <TableHead class="w-40 text-right">{{ t('machines.colActions') }}</TableHead>
+                <!-- pr 补偿按钮内边距(px-3):标题右缘对齐「忽略」文字而非按钮边框 -->
+                <TableHead class="w-40 pr-[20px] text-right">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

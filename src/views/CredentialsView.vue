@@ -141,7 +141,8 @@ async function remove(c: Credential) {
                 <TableHead class="min-w-[180px]">{{ t('credentials.colName') }}</TableHead>
                 <TableHead class="min-w-[180px]">{{ t('credentials.colId') }}</TableHead>
                 <TableHead class="w-44">{{ t('machines.colCreatedAt') }}</TableHead>
-                <TableHead class="w-20">{{ t('machines.colActions') }}</TableHead>
+                <!-- pl 补偿按钮内边距(px-2.5):标题左缘对齐删除图标而非按钮边框 -->
+                <TableHead class="w-20 pl-[18px]">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

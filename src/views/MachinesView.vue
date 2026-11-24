@@ -330,7 +330,8 @@ function onActionSubmitted() {
                 <TableHead class="w-24">{{ t('machines.colPower') }}</TableHead>
                 <TableHead class="min-w-[110px]">{{ t('machines.colLabels') }}</TableHead>
                 <TableHead class="w-40">{{ t('machines.colCreatedAt') }}</TableHead>
-                <TableHead class="sticky right-0 z-10 w-32 bg-inherit text-right">{{ t('machines.colActions') }}</TableHead>
+                <!-- pr 补偿按钮内边距(px-2.5):标题右缘对齐「更多▾」可见内容而非按钮边框 -->
+                <TableHead class="sticky right-0 z-10 w-32 bg-inherit pr-[18px] text-right">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

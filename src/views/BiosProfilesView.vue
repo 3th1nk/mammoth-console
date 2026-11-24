@@ -308,7 +308,8 @@ const ATTR_TYPE_OPTIONS = computed<{ value: AttrType; label: string }[]>(() => [
                 <TableHead class="min-w-[200px]">{{ t('biosProfiles.colName') }}</TableHead>
                 <TableHead class="w-24">{{ t('biosProfiles.colAttrs') }}</TableHead>
                 <TableHead class="w-44">{{ t('biosProfiles.colCreatedAt') }}</TableHead>
-                <TableHead class="w-24 text-right">{{ t('machines.colActions') }}</TableHead>
+                <!-- pr 补偿按钮内边距(px-2.5):标题右缘对齐「删除」可见内容而非按钮边框 -->
+                <TableHead class="w-24 pr-[18px] text-right">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

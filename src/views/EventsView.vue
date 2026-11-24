@@ -367,7 +367,8 @@ function copySecret() {
                     <TableHead class="min-w-[120px]">{{ t('events.colResourceFilter') }}</TableHead>
                     <TableHead class="w-24">{{ t('events.colWatermark') }}</TableHead>
                     <TableHead class="w-20">{{ t('events.colFailCount') }}</TableHead>
-                    <TableHead class="w-20">{{ t('machines.colActions') }}</TableHead>
+                    <!-- pl 补偿按钮内边距(px-3,纯文字按钮):标题左缘对齐「删除」文字而非按钮边框 -->
+                    <TableHead class="w-20 pl-[20px]">{{ t('machines.colActions') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
