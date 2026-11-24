@@ -106,12 +106,14 @@ function fmtDuration(ms?: number | null): string {
 const steps = computed<StepView[]>(() => {
   const stages = task.value?.stages ?? []
   if (stages.length === 0) return []
+  // noop = 引擎 no-op 直通标记（configure_raid 无硬件 RAID 声明）：渲染为
+  // "跳过"而非毫秒时长（引擎 Stage.noop，docs/06 §2 六段契约不变）
   if (stages.length <= 2) {
     return stages.map((s) => ({
       // 阶段名经 stages 域翻译(引擎契约值缺失时回落原文)
       name: t(`stages.${s.name}`),
-      status: stepStatus(s.state),
-      description: s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : t('common.notRun'),
+      status: s.noop ? ('skip' as const) : stepStatus(s.state),
+      description: s.noop ? t('taskDetail.stageSkipped') : s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : t('common.notRun'),
     }))
   }
   const byName = new Map(stages.map((s) => [s.name, s]))
@@ -119,8 +121,8 @@ const steps = computed<StepView[]>(() => {
     const s = byName.get(name)
     return {
       name: t(`stages.${name}`),
-      status: s ? stepStatus(s.state) : ('wait' as const),
-      description: s ? (s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : '') : t('common.notRun'),
+      status: !s ? ('wait' as const) : s.noop ? ('skip' as const) : stepStatus(s.state),
+      description: !s ? t('common.notRun') : s.noop ? t('taskDetail.stageSkipped') : (s.duration_ms ? fmtDuration(s.duration_ms) : s.started_at ? formatTime(s.started_at).slice(11) : ''),
     }
   })
 })

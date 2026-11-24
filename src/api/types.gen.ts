@@ -1291,7 +1291,7 @@ export interface components {
             /** @enum {string} */
             keep_partition_support: "full" | "partial" | "none";
             /**
-             * @description Network boot (PXE/iPXE) support level for install submissions with boot.strategy=pxe (docs/06-install-pipeline.md §6).
+             * @description Network boot (PXE/iPXE) support level for install submissions with boot.strategy=pxe (docs/06-install-pipeline.md §6). `partial` marks a pipeline-capable driver with a known delivery issue on some firmware classes (the RHEL8-generation initrd loss, docs/compat/distros.md PXE matrix) — PXE submissions still pass the submit gate; prefer virtual_media on affected hardware.
              * @enum {string}
              */
             pxe_support?: "full" | "partial" | "none";
@@ -2495,6 +2495,8 @@ export interface components {
             started_at?: components["schemas"]["Timestamp"] | null;
             finished_at?: components["schemas"]["Timestamp"] | null;
             duration_ms?: number | null;
+            /** @description Pass-through execution (configure_raid with no hardware RAID declared): the stage ran but had nothing to do — consoles render it as "skipped" rather than a millisecond duration. */
+            noop?: boolean;
         };
         Task: {
             id: components["schemas"]["TaskId"];

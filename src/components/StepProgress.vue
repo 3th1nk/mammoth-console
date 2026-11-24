@@ -2,18 +2,19 @@
 /** 阶段步骤视图:install 流六段 / power、discover 单段流通用。 */
 export interface StepView {
   name: string
-  status: 'wait' | 'process' | 'finish' | 'error'
+  status: 'wait' | 'process' | 'finish' | 'error' | 'skip'
   description?: string
 }
 </script>
 
 <script setup lang="ts">
-import { Check, X } from 'lucide-vue-next'
+import { Check, SkipForward, X } from 'lucide-vue-next'
 import { TONE_COLOR } from '@/utils/stateColors'
 
 /**
  * 阶段步骤条（el-steps 的替代）。状态语义与 stateColors 对齐：
- * finish=success、process=running、error=danger、wait=未执行。
+ * finish=success、process=running、error=danger、wait=未执行、
+ * skip=no-op 直通（引擎 stage.noop 标记，如实执行但无事可做）。
  */
 defineProps<{ steps: StepView[] }>()
 
@@ -25,14 +26,20 @@ function dotClass(status: StepView['status']): string {
       return 'bg-[var(--st-running)] text-white ring-4 ring-[var(--st-running)]/15'
     case 'error':
       return 'bg-[var(--st-danger)] text-white'
+    case 'skip':
+      return 'border border-dashed border-border bg-muted text-muted-foreground'
     default:
       return 'border border-border bg-muted text-muted-foreground'
   }
 }
 
 function lineClass(status: StepView['status']): string {
-  // 连接线颜色跟随左端节点：执行过即 success 色，未执行保持 border 色
-  return status === 'wait' ? 'bg-border' : 'bg-[var(--st-success)]'
+  // 连接线颜色跟随左端节点：执行过即 success 色，未执行/跳过保持 border 色
+  return status === 'wait' || status === 'skip' ? 'bg-border' : 'bg-[var(--st-success)]'
+}
+
+function nameClass(status: StepView['status']): string {
+  return status === 'process' ? 'text-foreground' : status === 'wait' || status === 'skip' ? 'text-muted-foreground' : 'text-foreground/90'
 }
 
 // 状态色注入为 CSS 变量（动态 class 引用）
@@ -61,12 +68,13 @@ const cssVars = {
       >
         <Check v-if="s.status === 'finish'" class="size-4" />
         <X v-else-if="s.status === 'error'" class="size-4" />
+        <SkipForward v-else-if="s.status === 'skip'" class="size-3.5" />
         <template v-else>{{ i + 1 }}</template>
       </div>
       <div class="max-w-full text-center">
         <div
           class="truncate text-xs font-medium"
-          :class="s.status === 'process' ? 'text-foreground' : s.status === 'wait' ? 'text-muted-foreground' : 'text-foreground/90'"
+          :class="nameClass(s.status)"
           :title="s.name"
         >
           {{ s.name }}

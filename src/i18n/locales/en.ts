@@ -333,6 +333,7 @@ export default {
     retryConfirmDesc: 'Resume from the last completed stage (not from scratch). Retry?',
     retryConfirmText: 'Retry',
     retryQueued: 'Re-enqueued, resuming from breakpoint',
+    stageSkipped: 'Skipped (no hardware RAID declared)',
   },
   logViewer: {
     follow: 'Follow tail',

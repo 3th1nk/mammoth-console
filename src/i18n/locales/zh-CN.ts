@@ -335,6 +335,7 @@ export default {
     retryConfirmDesc: '从最后一个阶段断点续跑（不重头开始）。确定重试？',
     retryConfirmText: '重试',
     retryQueued: '已重新入队，从断点续跑',
+    stageSkipped: '跳过（未声明硬件 RAID）',
   },
   logViewer: {
     follow: '跟随尾部',
