@@ -13,5 +13,14 @@
 		root * /srv
 		try_files {path} /index.html
 		file_server
+
+		# 默认 no-cache：SPA 入口(index.html 与路由回退)每次回源校验——
+		# 不带 Cache-Control 时浏览器启发式缓存会让镜像更新后页面「没变化」
+		# (ETag 协商 304 很便宜)；/assets/* 是内容指纹文件名,长缓存。
+		# 两组互斥匹配器:同字段多个 header 指令的生效顺序不可依赖
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@notassets not path /assets/*
+		header @notassets Cache-Control "no-cache"
 	}
 }
