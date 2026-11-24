@@ -115,8 +115,9 @@ function onRegistered(machine: Machine) {
                 <TableHead class="min-w-[120px]">{{ t('pending.colReport') }}</TableHead>
                 <TableHead class="w-44">{{ t('pending.colFirstSeen') }}</TableHead>
                 <TableHead class="w-44">{{ t('pending.colLastSeen') }}</TableHead>
-                <!-- pr 补偿按钮内边距(px-3):标题右缘对齐「忽略」文字而非按钮边框 -->
-                <TableHead class="w-40 pr-[20px] text-right">{{ t('machines.colActions') }}</TableHead>
+                <!-- 操作列整列左对齐(与镜像/凭证/事件同一规则):宽按钮组右对齐时
+                     短标题贴右缘只对上末位按钮尾,视觉重心偏右 -->
+                <TableHead class="w-40">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -151,8 +152,8 @@ function onRegistered(machine: Machine) {
                   </TableCell>
                   <TableCell class="text-muted-foreground">{{ formatTime(row.first_seen_at) }}</TableCell>
                   <TableCell class="text-muted-foreground">{{ formatTime(row.last_seen_at) }}</TableCell>
-                  <TableCell class="text-right">
-                    <div class="inline-flex justify-end gap-1">
+                  <TableCell>
+                    <div class="inline-flex gap-1">
                       <Button size="sm" class="h-8" @click.stop="openClaim(row)">{{ t('pending.claim') }}</Button>
                       <Button
                         variant="ghost"

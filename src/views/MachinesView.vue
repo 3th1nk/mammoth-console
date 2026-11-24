@@ -330,8 +330,10 @@ function onActionSubmitted() {
                 <TableHead class="w-24">{{ t('machines.colPower') }}</TableHead>
                 <TableHead class="min-w-[110px]">{{ t('machines.colLabels') }}</TableHead>
                 <TableHead class="w-40">{{ t('machines.colCreatedAt') }}</TableHead>
-                <!-- pr 补偿按钮内边距(px-2.5):标题右缘对齐「更多▾」可见内容而非按钮边框 -->
-                <TableHead class="sticky right-0 z-10 w-32 bg-inherit pr-[18px] text-right">{{ t('machines.colActions') }}</TableHead>
+                <!-- 操作列整列左对齐(与镜像/凭证/事件同一规则):宽按钮组右对齐时
+                     短标题贴右缘只对上末位按钮尾,视觉重心偏右;左对齐 = 表头与
+                     按钮组起点一条垂直线。有边框按钮,表头对按钮左缘即可 -->
+                <TableHead class="sticky right-0 z-10 w-32 bg-inherit">{{ t('machines.colActions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -381,8 +383,8 @@ function onActionSubmitted() {
                   </div>
                 </TableCell>
                 <TableCell class="text-muted-foreground">{{ formatTime(row.created_at) }}</TableCell>
-                <TableCell class="sticky right-0 z-10 bg-inherit text-right">
-                  <div class="inline-flex justify-end" @click.stop>
+                <TableCell class="sticky right-0 z-10 bg-inherit">
+                  <div class="inline-flex" @click.stop>
                     <MachineActions
                       :machine-id="row.id"
                       :power-state="row.power_state"
